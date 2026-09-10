@@ -46,6 +46,7 @@ _DEFAULTS = {
     "llm_api_key": "",
     "llm_timeout": 60,
     "polish_save": "new",   # new=另存.polished.md / overwrite=覆盖原文件
+    "polish_skill": "",     # 空=内置润色提示；否则为技能名
 }
 
 

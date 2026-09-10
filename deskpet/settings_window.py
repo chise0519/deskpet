@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import autostart, config, llm
+from . import autostart, config, llm, skills
 from .quick_note import PANEL_CSS
 
 EXTRA_CSS = """
@@ -223,6 +223,27 @@ class SettingsWindow(QWidget):
         row.addWidget(self.cmb_save, 1)
         v.addLayout(row)
         row = QHBoxLayout()
+        row.addWidget(QLabel("润色技能"))
+        self.cmb_skill = QComboBox()
+        self.cmb_skill.currentIndexChanged.connect(self._on_skill)
+        row.addWidget(self.cmb_skill, 1)
+        b_add = QPushButton("添加…")
+        b_add.setStyleSheet(
+            "background:#33384a;color:#dfe3ea;border:none;border-radius:6px;"
+            "padding:5px 10px;font-size:12px;"
+        )
+        b_add.clicked.connect(self._add_skill)
+        row.addWidget(b_add)
+        b_del = QPushButton("删除")
+        b_del.setStyleSheet(b_add.styleSheet())
+        b_del.clicked.connect(self._del_skill)
+        row.addWidget(b_del)
+        v.addLayout(row)
+        self.skill_hint = QLabel("")
+        self.skill_hint.setStyleSheet("color:#6f7889;font-size:10px;")
+        self.skill_hint.setWordWrap(True)
+        v.addWidget(self.skill_hint)
+        row = QHBoxLayout()
         self.b_discover = QPushButton("自动发现")
         self.b_discover.setStyleSheet(
             "background:#3a5a6b;color:#dfe3ea;border:none;border-radius:6px;"
@@ -305,6 +326,7 @@ class SettingsWindow(QWidget):
         self.spin_timeout.setValue(int(cfg.get("llm_timeout", 60)))
         idx = self.cmb_save.findData(cfg.get("polish_save", "new"))
         self.cmb_save.setCurrentIndex(max(0, idx))
+        self._reload_skills()
         self.cb_auto.setChecked(autostart.is_enabled())
         self._loading = False
 
@@ -454,6 +476,66 @@ class SettingsWindow(QWidget):
             subprocess.Popen(["explorer", str(d)])
         else:
             subprocess.Popen(["xdg-open", str(d)])
+
+    # ---------------- 润色技能 ----------------
+
+    def _reload_skills(self):
+        cur = config.load_config().get("polish_skill", "") or ""
+        self.cmb_skill.blockSignals(True)
+        self.cmb_skill.clear()
+        self.cmb_skill.addItem("内置润色提示", "")
+        for s in skills.list_skills():
+            self.cmb_skill.addItem(s["name"], s["name"])
+        i = self.cmb_skill.findData(cur)
+        self.cmb_skill.setCurrentIndex(max(0, i))
+        self.cmb_skill.blockSignals(False)
+        self._update_skill_hint()
+
+    def _update_skill_hint(self):
+        name = self.cmb_skill.currentData()
+        if not name:
+            self.skill_hint.setText("未选技能：润色用内置提示词。")
+            return
+        sk = skills.get_skill(name)
+        desc = sk["description"] if sk else ""
+        self.skill_hint.setText(f"{desc}" if desc else f"技能：{name}")
+
+    def _on_skill(self, _i):
+        if getattr(self, "_loading", False):
+            return
+        self._set("polish_skill", self.cmb_skill.currentData() or "")
+        self._update_skill_hint()
+
+    def _add_skill(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择技能文件（.md）", str(Path.home()),
+            "Markdown (*.md);;所有文件 (*)")
+        if not path:
+            return
+        try:
+            s = skills.add_skill(path)
+        except (OSError, UnicodeDecodeError) as e:
+            QMessageBox.warning(self, "添加技能失败", f"读取文件出错：{e}")
+            return
+        self._reload_skills()
+        i = self.cmb_skill.findData(s["name"])
+        if i >= 0:
+            self.cmb_skill.setCurrentIndex(i)
+            self._on_skill(i)
+        QMessageBox.information(
+            self, "DeskPet", f"已添加技能「{s['name']}」并选中。")
+
+    def _del_skill(self):
+        name = self.cmb_skill.currentData()
+        if not name:
+            QMessageBox.information(self, "DeskPet", "内置提示不可删除。")
+            return
+        if skills.remove_skill(name):
+            cfg = config.load_config()
+            if cfg.get("polish_skill") == name:
+                cfg["polish_skill"] = ""
+                config.save_config(cfg)
+            self._reload_skills()
 
     # ---------------- 连接自检 ----------------
 

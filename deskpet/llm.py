@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from . import config
+from . import config, skills
 
 # 本地常见 OpenAI 兼容服务，自动扫描用
 LOCAL_ENDPOINTS = [
@@ -193,8 +193,21 @@ def test_connection(base_url: str, api_key: str, model: str,
     return True, f"连接正常 · 耗时 {dt:.1f}s · 模型回复：{preview or '（空）'}"
 
 
+BASE_RULES = (
+    "只优化措辞、语气与排版，不得编造事实、不得新增或删除事项；"
+    "直接输出润色后的全文，不要任何解释或前后缀。"
+)
+
+
+def build_system_prompt(skill_body: str = "") -> str:
+    """有技能用技能正文+基础约束；无技能用内置润色提示。"""
+    if skill_body and skill_body.strip():
+        return skill_body.strip() + "\n\n## 基础约束\n" + BASE_RULES
+    return SYSTEM_PROMPT
+
+
 def polish_report(markdown: str, cfg: dict | None = None) -> str:
-    """一键润色入口：读设置 → 调模型 → 返回润色后全文。"""
+    """一键润色入口：读设置（含所选技能）→ 调模型 → 返回润色后全文。"""
     cfg = cfg if cfg is not None else config.load_config()
     provider = cfg.get("llm_provider", "qwen")
     prof = config.get_llm_profile(cfg, provider)
@@ -211,10 +224,16 @@ def polish_report(markdown: str, cfg: dict | None = None) -> str:
         raise LLMError("未配置 API Key：请到 设置 → AI 润色 填写（本地服务可留空）")
     if not markdown.strip():
         raise LLMError("日报内容为空，没什么可润色的")
+    skill_body = ""
+    skill_name = (cfg.get("polish_skill") or "").strip()
+    if skill_name:
+        sk = skills.get_skill(skill_name)
+        if sk:
+            skill_body = sk["body"]
     timeout = int(cfg.get("llm_timeout", 60))
     return chat_complete(
         base_url, api_key, model,
-        [{"role": "system", "content": SYSTEM_PROMPT},
+        [{"role": "system", "content": build_system_prompt(skill_body)},
          {"role": "user", "content": markdown}],
         timeout=timeout,
     )
