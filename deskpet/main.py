@@ -20,6 +20,7 @@ from .pet_widget import PetWidget, W, H
 from .quick_note import QuickNotePanel
 from .reminder_dialog import ReminderPanel
 from .report_window import ReportWindow
+from .settings_window import SettingsWindow
 
 SINGLE_INSTANCE_KEY = "***"
 POLL_MS = 15_000
@@ -60,12 +61,15 @@ class DeskPetApp:
         self.reminder_panel = ReminderPanel()
         self.report_win = ReportWindow()
         self.alert_card = AlertCard()
+        self.settings_win = SettingsWindow()
 
         # 信号接线
         self.pet.request_note.connect(self.open_note)
         self.pet.request_reminder.connect(self.open_reminder)
         self.pet.request_report.connect(self.open_report)
+        self.pet.request_settings.connect(self.open_settings)
         self.pet.request_quit.connect(self.quit)
+        self.settings_win.changed.connect(self._apply_poll_interval)
         self.alert_card.done.connect(self._alert_done)
         self.alert_card.snooze.connect(self._alert_snooze)
         self.alert_card.ignore.connect(self._alert_ignore)
@@ -73,7 +77,7 @@ class DeskPetApp:
         # 提醒轮询
         self.poll = QTimer()
         self.poll.timeout.connect(self.poll_reminders)
-        self.poll.start(POLL_MS)
+        self._apply_poll_interval()
 
         # 托盘
         self.tray = QSystemTrayIcon(icon, app)
@@ -94,6 +98,7 @@ class DeskPetApp:
             ("bell", "提醒管理", self.open_reminder),
             ("doc", "写日报", self.open_report),
             ("eye", "显示/隐藏企鹅", self.toggle_pet),
+            ("gear", "设置", self.open_settings),
         ]:
             act = QAction(ui_icon(ic_name), text, menu)
             act.triggered.connect(slot)
@@ -127,6 +132,13 @@ class DeskPetApp:
     def open_report(self):
         self.report_win.show_and_generate()
 
+    def open_settings(self):
+        self.settings_win.show_settings()
+
+    def _apply_poll_interval(self):
+        sec = int(config.load_config().get("poll_sec", 15))
+        self.poll.start(max(5, min(300, sec)) * 1000)
+
     def toggle_pet(self):
         self.pet.setVisible(not self.pet.isVisible())
 
@@ -157,10 +169,11 @@ class DeskPetApp:
         self.alert_card.popup(
             r, anchor, when_text=f"计划 {due_s} · {rep_cn}",
         )
-        self.tray.showMessage(
-            "⏰ DeskPet 提醒", r["content"],
-            QSystemTrayIcon.MessageIcon.Information, 5000,
-        )
+        if config.load_config().get("sys_notify", True):
+            self.tray.showMessage(
+                "⏰ DeskPet 提醒", r["content"],
+                QSystemTrayIcon.MessageIcon.Information, 5000,
+            )
 
     def _alert_done(self, rem_id: int):
         self.pet.clear_alert()

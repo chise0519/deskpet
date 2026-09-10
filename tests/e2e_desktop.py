@@ -26,6 +26,7 @@ from deskpet.pet_widget import PetWidget
 from deskpet.quick_note import QuickNotePanel
 from deskpet.reminder_dialog import ReminderPanel
 from deskpet.report_window import ReportWindow
+from deskpet.settings_window import SettingsWindow
 
 # 临时库，不污染真实数据
 tmpdb = ROOT / "preview" / "e2e.db"
@@ -44,6 +45,7 @@ note = QuickNotePanel()
 remp = ReminderPanel()
 rwin = ReportWindow()
 card = AlertCard()
+swin = SettingsWindow()
 
 # 造点数据
 storage.add_note("E2E 验证：悬浮窗渲染")
@@ -93,8 +95,12 @@ def seq():
     QTimer.singleShot(8200, lambda: (rwin.show_and_generate(),
         rwin.grab().save(str(out / "real_8_report.png")),
         print("shot: 8_report", flush=True)))
+    # 9 设置窗口
+    QTimer.singleShot(9400, lambda: (swin.show_settings(),
+        swin.grab().save(str(out / "real_9_settings.png")),
+        print("shot: 9_settings", flush=True)))
     # 收尾：验证窗口句柄可见 + 退出
-    QTimer.singleShot(9500, finish)
+    QTimer.singleShot(10700, finish)
 
 
 def finish():

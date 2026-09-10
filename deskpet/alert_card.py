@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 
+from . import config
+
 CSS = """
 #alertCard {
     background: rgba(43, 34, 30, 244);
@@ -105,4 +107,5 @@ class AlertCard(QWidget):
         self.move(x, y)
         self.show()
         self.raise_()
-        QApplication.beep()
+        if config.load_config().get("beep_on", True):
+            QApplication.beep()

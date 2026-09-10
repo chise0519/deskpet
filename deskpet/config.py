@@ -22,7 +22,9 @@ def db_path() -> Path:
 
 
 def reports_dir() -> Path:
-    p = data_dir() / "reports"
+    """日报目录：设置里可自定义，未设置时用默认目录。"""
+    custom = load_config().get("reports_dir")
+    p = Path(custom) if custom else data_dir() / "reports"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -30,6 +32,14 @@ def reports_dir() -> Path:
 _DEFAULTS = {
     "pos_x": None,
     "pos_y": None,
+    "reports_dir": None,      # None = 默认 %APPDATA%/DeskPet/reports
+    "show_seconds": True,
+    "show_date": True,
+    "hour12": False,
+    "bubble_on": True,
+    "beep_on": True,
+    "sys_notify": True,
+    "poll_sec": 15,
 }
 
 

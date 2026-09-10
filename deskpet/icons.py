@@ -15,6 +15,7 @@ COLORS = {
     "doc": "#7ee0a3",    # 日报：文档
     "quit": "#e06c75",   # 退出：电源
     "eye": "#b39ddb",    # 显示/隐藏：眼睛
+    "gear": "#9fb3c8",   # 设置：齿轮
 }
 
 
@@ -112,12 +113,27 @@ def _draw_eye(p, c):
     p.drawEllipse(QPointF(24, 24), 2.6, 2.6)
 
 
+def _draw_gear(p, c):
+    """齿轮：外圈8齿 + 中心圆孔"""
+    import math as _m
+
+    _pen(p, c)
+    p.drawEllipse(QPointF(24, 24), 7, 7)
+    p.drawEllipse(QPointF(24, 24), 2.6, 2.6)
+    for i in range(8):
+        a = _m.radians(i * 45)
+        x1, y1 = 24 + 12 * _m.cos(a), 24 + 12 * _m.sin(a)
+        x2, y2 = 24 + 18 * _m.cos(a), 24 + 18 * _m.sin(a)
+        p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+
 _DRAWERS = {
     "note": _draw_note,
     "bell": _draw_bell,
     "doc": _draw_doc,
     "quit": _draw_quit,
     "eye": _draw_eye,
+    "gear": _draw_gear,
 }
 
 

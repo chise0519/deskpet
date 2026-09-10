@@ -1,0 +1,219 @@
+"""设置窗口：日报目录 + 时钟/互动/提醒/系统各项偏好。"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QCheckBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+    QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+)
+
+from . import autostart, config
+from .quick_note import PANEL_CSS
+
+EXTRA_CSS = """
+QGroupBox {
+    color: #9aa3b2; font-size: 11px; border: 1px solid #343a48;
+    border-radius: 8px; margin-top: 12px; padding-top: 6px;
+}
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
+QLineEdit, QSpinBox {
+    background: #1b1d25; color: #eceff4; border: 1px solid #3b3f4d;
+    border-radius: 6px; padding: 5px 8px; font-size: 12px;
+}
+QSpinBox::up-button, QSpinBox::down-button { width: 16px; }
+QCheckBox { color: #dfe3ea; spacing: 7px; font-size: 12px; }
+QCheckBox::indicator { width: 15px; height: 15px; border-radius: 4px;
+    border: 1px solid #5a6070; background: #1b1d25; }
+QCheckBox::indicator:checked { background: #4a9d6a; border-color: #4a9d6a; }
+QPushButton.mini {
+    background: #33384a; color: #dfe3ea; border: none; border-radius: 6px;
+    padding: 5px 10px; font-size: 12px;
+}
+QPushButton.mini:hover { background: #424a60; }
+QLabel.hint { color: #6f7889; font-size: 10px; }
+"""
+
+
+class SettingsWindow(QWidget):
+    """改完即存（config.save_config），无"确定/取消"心智负担。"""
+
+    changed = Signal()  # 通知主程序热更新（轮询间隔等）
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("notePanel")
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setStyleSheet(PANEL_CSS + EXTRA_CSS)
+        self.setWindowTitle("DeskPet 设置")
+        self.setFixedWidth(400)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 10, 14, 12)
+        root.setSpacing(6)
+
+        hdr = QHBoxLayout()
+        t = QLabel("设置")
+        t.setObjectName("hdr")
+        hdr.addWidget(t)
+        hdr.addStretch(1)
+        close = QPushButton("×")
+        close.setFixedSize(20, 20)
+        close.setStyleSheet(
+            "QPushButton{background:transparent;color:#8b93a3;border:none;"
+            "font-size:16px;}QPushButton:hover{color:#e06c75;}"
+        )
+        close.clicked.connect(self.hide)
+        hdr.addWidget(close)
+        root.addLayout(hdr)
+
+        # ---- 日报 ----
+        g = QGroupBox("日报")
+        fl = QFormLayout(g)
+        fl.setSpacing(5)
+        row = QHBoxLayout()
+        self.dir_edit = QLineEdit()
+        self.dir_edit.setPlaceholderText("留空 = 默认目录")
+        row.addWidget(self.dir_edit, 1)
+        b_browse = QPushButton("浏览…")
+        b_browse.setProperty("class", "mini")
+        b_browse.setStyleSheet(
+            "background:#33384a;color:#dfe3ea;border:none;border-radius:6px;"
+            "padding:5px 10px;font-size:12px;"
+        )
+        b_browse.clicked.connect(self._browse_dir)
+        row.addWidget(b_browse)
+        b_open = QPushButton("打开")
+        b_open.setStyleSheet(b_browse.styleSheet())
+        b_open.clicked.connect(self._open_dir)
+        row.addWidget(b_open)
+        fl.addRow("存放目录", row)
+        self.dir_hint = QLabel("")
+        self.dir_hint.setStyleSheet("color:#6f7889;font-size:10px;")
+        fl.addRow("", self.dir_hint)
+        root.addWidget(g)
+
+        # ---- 时钟 ----
+        g = QGroupBox("时钟")
+        v = QVBoxLayout(g)
+        v.setSpacing(4)
+        self.cb_sec = QCheckBox("显示秒")
+        self.cb_sec.toggled.connect(lambda on: self._set("show_seconds", on))
+        v.addWidget(self.cb_sec)
+        self.cb_date = QCheckBox("显示日期和星期")
+        self.cb_date.toggled.connect(lambda on: self._set("show_date", on))
+        v.addWidget(self.cb_date)
+        self.cb_12 = QCheckBox("12 小时制")
+        self.cb_12.toggled.connect(lambda on: self._set("hour12", on))
+        v.addWidget(self.cb_12)
+        root.addWidget(g)
+
+        # ---- 互动与提醒 ----
+        g = QGroupBox("互动与提醒")
+        v = QVBoxLayout(g)
+        v.setSpacing(4)
+        self.cb_bubble = QCheckBox("点击企鹅时弹气泡语录")
+        self.cb_bubble.toggled.connect(lambda on: self._set("bubble_on", on))
+        v.addWidget(self.cb_bubble)
+        self.cb_beep = QCheckBox("提醒到点 beep 提示音")
+        self.cb_beep.toggled.connect(lambda on: self._set("beep_on", on))
+        v.addWidget(self.cb_beep)
+        self.cb_notify = QCheckBox("提醒到点发系统通知（托盘气泡）")
+        self.cb_notify.toggled.connect(lambda on: self._set("sys_notify", on))
+        v.addWidget(self.cb_notify)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("提醒轮询间隔"))
+        self.spin_poll = QSpinBox()
+        self.spin_poll.setRange(5, 300)
+        self.spin_poll.setSuffix(" 秒")
+        self.spin_poll.valueChanged.connect(
+            lambda v: (self._set("poll_sec", v), self.changed.emit()))
+        row.addWidget(self.spin_poll)
+        row.addStretch(1)
+        v.addLayout(row)
+        root.addWidget(g)
+
+        # ---- 系统 ----
+        g = QGroupBox("系统")
+        v = QVBoxLayout(g)
+        v.setSpacing(4)
+        self.cb_auto = QCheckBox("开机自启")
+        self.cb_auto.toggled.connect(lambda on: autostart.set_enabled(on))
+        v.addWidget(self.cb_auto)
+        row = QHBoxLayout()
+        b_reset = QPushButton("重置企鹅位置到屏幕右下角")
+        b_reset.setStyleSheet(
+            "background:#33384a;color:#dfe3ea;border:none;border-radius:6px;"
+            "padding:5px 10px;font-size:12px;"
+        )
+        b_reset.clicked.connect(self._reset_pos)
+        row.addWidget(b_reset)
+        row.addStretch(1)
+        v.addLayout(row)
+        root.addWidget(g)
+
+        root.addStretch(1)
+        self.load()
+
+    # ---------------- 读写 ----------------
+
+    def load(self):
+        cfg = config.load_config()
+        self._loading = True
+        self.dir_edit.setText(cfg.get("reports_dir") or "")
+        self.dir_hint.setText(
+            f"当前生效：{config.reports_dir()}"
+        )
+        self.cb_sec.setChecked(bool(cfg.get("show_seconds", True)))
+        self.cb_date.setChecked(bool(cfg.get("show_date", True)))
+        self.cb_12.setChecked(bool(cfg.get("hour12", False)))
+        self.cb_bubble.setChecked(bool(cfg.get("bubble_on", True)))
+        self.cb_beep.setChecked(bool(cfg.get("beep_on", True)))
+        self.cb_notify.setChecked(bool(cfg.get("sys_notify", True)))
+        self.spin_poll.setValue(int(cfg.get("poll_sec", 15)))
+        self.cb_auto.setChecked(autostart.is_enabled())
+        self._loading = False
+
+    def _set(self, key, value):
+        if getattr(self, "_loading", False):
+            return
+        cfg = config.load_config()
+        cfg[key] = value
+        config.save_config(cfg)
+
+    # ---------------- 目录 ----------------
+
+    def _browse_dir(self):
+        cur = self.dir_edit.text() or str(config.reports_dir())
+        d = QFileDialog.getExistingDirectory(self, "选择日报存放目录", cur)
+        if not d:
+            return
+        self.dir_edit.setText(d)
+        self._set("reports_dir", d)
+        self.dir_hint.setText(f"当前生效：{config.reports_dir()}")
+
+    def _open_dir(self):
+        import os
+        import subprocess
+
+        d = config.reports_dir()
+        if os.name == "nt":
+            subprocess.Popen(["explorer", str(d)])
+        else:
+            subprocess.Popen(["xdg-open", str(d)])
+
+    def _reset_pos(self):
+        cfg = config.load_config()
+        cfg["pos_x"] = None
+        cfg["pos_y"] = None
+        config.save_config(cfg)
+        QMessageBox.information(
+            self, "DeskPet", "已重置，下次显示企鹅时回到屏幕右下角。"
+        )
+
+    def show_settings(self):
+        self.load()
+        self.show()
+        self.raise_()
+        self.activateWindow()

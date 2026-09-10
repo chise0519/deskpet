@@ -93,6 +93,7 @@ class PetWidget(QWidget):
     request_note = Signal()      # 双击 → 速记
     request_reminder = Signal()  # 菜单 → 提醒
     request_report = Signal()    # 菜单 → 日报
+    request_settings = Signal()  # 菜单 → 设置
     request_quit = Signal()
 
     def __init__(self):
@@ -151,7 +152,11 @@ class PetWidget(QWidget):
         p.drawPath(path)
 
         now = datetime.now()
-        hm = now.strftime("%H:%M")
+        cfg = config.load_config()
+        hour12 = bool(cfg.get("hour12", False))
+        show_sec = bool(cfg.get("show_seconds", True))
+        show_date = bool(cfg.get("show_date", True))
+        hm = now.strftime("%I:%M" if hour12 else "%H:%M")
         # 大数字 HH:MM（居左）+ 秒（右侧小字），超宽自动缩字号
         big_pt, sec_pt = 30, 15
         f_big = QFont("Consolas", big_pt, QFont.Bold)
@@ -159,7 +164,8 @@ class PetWidget(QWidget):
         from PySide6.QtGui import QFontMetrics
         while big_pt > 20:
             big_w = QFontMetrics(f_big).horizontalAdvance(hm)
-            sec_w = QFontMetrics(f_sec).horizontalAdvance(":SS")
+            sec_w = (QFontMetrics(f_sec).horizontalAdvance(":SS")
+                     if show_sec else 0)
             if big_w + sec_w <= board.width() - 14:
                 break
             big_pt -= 2
@@ -170,16 +176,20 @@ class PetWidget(QWidget):
         left = board.center().x() - (big_w + sec_w) / 2
         p.setPen(CLOCK_FG)
         p.drawText(QPointF(left, board.top() + 52), hm)
-        p.setFont(f_sec)
-        p.setPen(CLOCK_SEC)
-        p.drawText(QPointF(left + big_w + 2, board.top() + 52), now.strftime(":%S"))
+        if show_sec:
+            p.setFont(f_sec)
+            p.setPen(CLOCK_SEC)
+            p.drawText(QPointF(left + big_w + 2, board.top() + 52),
+                       now.strftime(":%S"))
         # 日期 + 星期
-        wk = "一二三四五六日"[now.weekday()]
-        f3 = QFont("Microsoft YaHei UI", 9)
-        p.setFont(f3)
-        p.setPen(CLOCK_DATE)
-        p.drawText(QRectF(board.left(), board.bottom() - 26, board.width(), 18),
-                   Qt.AlignCenter, now.strftime(f"%m月%d日 周{wk}"))
+        if show_date:
+            wk = "一二三四五六日"[now.weekday()]
+            f3 = QFont("Microsoft YaHei UI", 9)
+            p.setFont(f3)
+            p.setPen(CLOCK_DATE)
+            p.drawText(
+                QRectF(board.left(), board.bottom() - 26, board.width(), 18),
+                Qt.AlignCenter, now.strftime(f"%m月%d日 周{wk}"))
         # 呼吸小圆点（活着的感觉）
         alpha = int(90 + 90 * math.sin(now.timestamp() * 2))
         p.setPen(Qt.NoPen)
@@ -395,7 +405,8 @@ class PetWidget(QWidget):
         self._happy_until = self.frame + 14
         self.update()
         anchor = self.mapToGlobal(QPointF(W / 2, 14))
-        self.bubble.say(random.choice(config.QUOTES), anchor)
+        if config.load_config().get("bubble_on", True):
+            self.bubble.say(random.choice(config.QUOTES), anchor)
 
     def _show_menu(self, pos):
         from .icons import icon
@@ -413,6 +424,7 @@ class PetWidget(QWidget):
         menu.addAction(icon("bell"), "提醒", self.request_reminder.emit)
         menu.addAction(icon("doc"), "写日报", self.request_report.emit)
         menu.addSeparator()
+        menu.addAction(icon("gear"), "设置", self.request_settings.emit)
         menu.addAction(icon("quit"), "退出", self.request_quit.emit)
         menu.exec(pos)
 
