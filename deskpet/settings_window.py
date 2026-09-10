@@ -248,15 +248,11 @@ class SettingsWindow(QWidget):
         hint.setWordWrap(True)
         v.addWidget(hint)
         self.llm_url.editingFinished.connect(
-            lambda: (self._set("llm_base_url", self.llm_url.text().strip()),
-                     self._refresh_models()))
-        self.llm_model.lineEdit().editingFinished.connect(
-            lambda: self._set("llm_model", self.llm_model.currentText().strip()))
-        self.llm_model.currentIndexChanged.connect(
-            lambda _i: self._set("llm_model", self.llm_model.currentText().strip()))
+            lambda: (self._save_form(), self._refresh_models()))
+        self.llm_model.lineEdit().editingFinished.connect(self._save_form)
+        self.llm_model.currentIndexChanged.connect(lambda _i: self._save_form())
         self.llm_key.editingFinished.connect(
-            lambda: (self._set("llm_api_key", self.llm_key.text()),
-                     self._refresh_models()))
+            lambda: (self._save_form(), self._refresh_models()))
         self.spin_timeout.valueChanged.connect(
             lambda v: self._set("llm_timeout", v))
         self.cmb_save.currentIndexChanged.connect(
@@ -303,9 +299,9 @@ class SettingsWindow(QWidget):
         self.spin_poll.setValue(int(cfg.get("poll_sec", 15)))
         idx = self.cmb_prov.findData(cfg.get("llm_provider", "qwen"))
         self.cmb_prov.setCurrentIndex(max(0, idx))
-        self.llm_url.setText(cfg.get("llm_base_url") or "")
-        self._set_model_text(cfg.get("llm_model") or "")
-        self.llm_key.setText(cfg.get("llm_api_key") or "")
+        prov = self.cmb_prov.currentData()
+        self._form_provider = prov
+        self._load_profile_to_form(prov)
         self.spin_timeout.setValue(int(cfg.get("llm_timeout", 60)))
         idx = self.cmb_save.findData(cfg.get("polish_save", "new"))
         self.cmb_save.setCurrentIndex(max(0, idx))
@@ -315,19 +311,48 @@ class SettingsWindow(QWidget):
     def _on_provider(self, _idx):
         if getattr(self, "_loading", False):
             return
-        key = self.cmb_prov.currentData()
-        meta = llm.PROVIDERS.get(key, {})
-        self._set("llm_provider", key)
-        hint = llm.env_key_hint(key)
-        if hint and not self.llm_key.text():
-            self.llm_key.setText(hint)
-            self._set("llm_api_key", hint)
-        if meta.get("base_url"):
-            self.llm_url.setText(meta["base_url"])
-            self._set_model_text(meta["model"])
-            self._set("llm_base_url", meta["base_url"])
-            self._set("llm_model", meta["model"])
+        new = self.cmb_prov.currentData()
+        old = getattr(self, "_form_provider", None)
+        if old and old != new:
+            # 表单里还是旧服务商的值，先归档再换
+            self._save_form()
+        self._set("llm_provider", new)
+        self._form_provider = new
+        self._load_profile_to_form(new)
         self._refresh_models()
+
+    # ---------------- 按服务商存档 ----------------
+
+    def _save_form(self):
+        """把表单当前值存入"表单正在显示的服务商"的档案并落盘。"""
+        prov = getattr(self, "_form_provider", None) or self.cmb_prov.currentData()
+        cfg = config.load_config()
+        config.set_llm_profile(cfg, prov, {
+            "base_url": self.llm_url.text().strip(),
+            "model": self.llm_model.currentText().strip(),
+            "api_key": self.llm_key.text(),
+        })
+        config.save_config(cfg)
+
+    def _load_profile_to_form(self, provider: str):
+        """把某服务商档案读回表单；空档案用预设地址/环境变量 Key 兜底（不落盘）。"""
+        cfg = config.load_config()
+        prof = config.get_llm_profile(cfg, provider)
+        base, model, key = prof["base_url"], prof["model"], prof["api_key"]
+        meta = llm.PROVIDERS.get(provider, {})
+        if not base and meta.get("base_url"):
+            base, model = meta["base_url"], meta.get("model", "")
+        if not key:
+            key = llm.env_key_hint(provider)
+        self.llm_url.blockSignals(True)
+        self.llm_key.blockSignals(True)
+        self.llm_model.blockSignals(True)
+        self.llm_url.setText(base)
+        self.llm_key.setText(key)
+        self._set_model_text(model)
+        self.llm_url.blockSignals(False)
+        self.llm_key.blockSignals(False)
+        self.llm_model.blockSignals(False)
 
     def _set_model_text(self, text: str):
         """设置模型框文本（不触发保存信号）。"""
@@ -377,11 +402,12 @@ class SettingsWindow(QWidget):
         self.llm_url.setText(first["base_url"])
         if first["api_key"]:
             self.llm_key.setText(first["api_key"])
-        self._set("llm_base_url", first["base_url"])
-        self._set("llm_api_key", first["api_key"])
+        self._save_form()
         self._fill_models(first["models"])
 
     def _fill_models(self, models: list):
+        if not models:
+            return  # 拉取失败/为空时不动用户已填的模型名
         cur = self.llm_model.currentText().strip()
         self.llm_model.blockSignals(True)
         self.llm_model.clear()
@@ -391,7 +417,7 @@ class SettingsWindow(QWidget):
             self._set_model_text(cur)
         elif models:
             self._set_model_text(models[0])
-            self._set("llm_model", models[0])
+            self._save_form()
 
     def _refresh_models(self):
         base = self.llm_url.text().strip()

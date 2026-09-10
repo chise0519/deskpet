@@ -57,6 +57,42 @@ def load_config() -> dict:
             cfg.update(json.loads(f.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, OSError):
             pass
+    # 迁移：老版本只有一套 llm_* 字段，按当前服务商归档为 llm_profiles
+    if not isinstance(cfg.get("llm_profiles"), dict):
+        cfg["llm_profiles"] = {
+            cfg.get("llm_provider", "qwen"): {
+                "base_url": cfg.get("llm_base_url", "") or "",
+                "model": cfg.get("llm_model", "") or "",
+                "api_key": cfg.get("llm_api_key", "") or "",
+            }
+        }
+    return cfg
+
+
+def get_llm_profile(cfg: dict, provider: str) -> dict:
+    """取某服务商的配置档案 {base_url, model, api_key}。
+
+    无 llm_profiles 的字典（单测直传的老式扁平配置）回退到扁平字段。
+    """
+    profiles = cfg.get("llm_profiles")
+    if not isinstance(profiles, dict):
+        return {
+            "base_url": cfg.get("llm_base_url", "") or "",
+            "model": cfg.get("llm_model", "") or "",
+            "api_key": cfg.get("llm_api_key", "") or "",
+        }
+    prof = dict(profiles.get(provider, {}))
+    for k in ("base_url", "model", "api_key"):
+        prof.setdefault(k, "")
+    return prof
+
+
+def set_llm_profile(cfg: dict, provider: str, values: dict) -> dict:
+    """把某服务商的档案写回 cfg（不落盘，调用方自行 save_config）。"""
+    profiles = cfg.setdefault("llm_profiles", {})
+    profiles[provider] = {
+        k: (values.get(k, "") or "") for k in ("base_url", "model", "api_key")
+    }
     return cfg
 
 

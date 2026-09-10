@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from deskpet import llm
+from deskpet import config, llm
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -189,3 +189,52 @@ def test_env_key_hint(monkeypatch):
     monkeypatch.delenv("DASHSCOPE_API_KEY")
     assert llm.env_key_hint("qwen") == ""
     assert llm.env_key_hint("nosuch") == ""
+
+
+# ---------------- 按服务商档案：存取 / 切换不串 / 老配置迁移 ----------------
+
+def test_profile_roundtrip_per_provider():
+    cfg = {}
+    config.set_llm_profile(cfg, "qwen", {"base_url": "u1", "model": "m1",
+                                         "api_key": "k1"})
+    config.set_llm_profile(cfg, "glm", {"base_url": "u2", "model": "m2",
+                                        "api_key": "k2"})
+    assert config.get_llm_profile(cfg, "qwen")["api_key"] == "k1"
+    assert config.get_llm_profile(cfg, "glm")["api_key"] == "k2"
+    # 未配过的服务商是空档案，不串
+    assert config.get_llm_profile(cfg, "custom") == {
+        "base_url": "", "model": "", "api_key": ""}
+
+
+def test_profile_overwrite_same_provider():
+    cfg = {}
+    config.set_llm_profile(cfg, "glm", {"api_key": "old"})
+    config.set_llm_profile(cfg, "glm", {"api_key": "new"})
+    assert config.get_llm_profile(cfg, "glm")["api_key"] == "new"
+
+
+def test_profile_migration_from_flat(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    (tmp_path / "config.json").write_text(
+        '{"llm_provider": "glm", "llm_base_url": "u", '
+        '"llm_model": "m", "llm_api_key": "k"}', encoding="utf-8")
+    cfg = config.load_config()
+    assert cfg["llm_profiles"]["glm"]["api_key"] == "k"
+    assert config.get_llm_profile(cfg, "glm")["api_key"] == "k"
+    assert config.get_llm_profile(cfg, "qwen")["api_key"] == ""
+
+
+def test_polish_uses_profile_of_current_provider():
+    """润色读的是当前服务商档案，不是别家的 Key。"""
+    cfg = {"llm_provider": "glm"}
+    config.set_llm_profile(cfg, "qwen", {"base_url": "https://q/v1",
+                                         "model": "qm", "api_key": "qk"})
+    config.set_llm_profile(cfg, "glm", {"base_url": "", "model": "",
+                                        "api_key": ""})
+    with pytest.raises(llm.LLMError, match="API Key"):
+        llm.polish_report("# 日报", cfg)
+    cfg["llm_provider"] = "qwen"
+    # qwen 有 Key 但地址不可达 → 报网络错而非缺 Key，证明用的是 qwen 档案
+    with pytest.raises(llm.LLMError) as ei:
+        llm.polish_report("# 日报", {**cfg, "llm_timeout": 1})
+    assert "API Key" not in str(ei.value)

@@ -197,9 +197,10 @@ def polish_report(markdown: str, cfg: dict | None = None) -> str:
     """一键润色入口：读设置 → 调模型 → 返回润色后全文。"""
     cfg = cfg if cfg is not None else config.load_config()
     provider = cfg.get("llm_provider", "qwen")
-    base_url = (cfg.get("llm_base_url") or "").strip()
-    model = (cfg.get("llm_model") or "").strip()
-    api_key = (cfg.get("llm_api_key") or "").strip()
+    prof = config.get_llm_profile(cfg, provider)
+    base_url = prof["base_url"].strip()
+    model = prof["model"].strip()
+    api_key = prof["api_key"].strip()
     if not base_url or not model:
         preset = PROVIDERS.get(provider, {})
         base_url = base_url or preset.get("base_url", "")
