@@ -78,18 +78,24 @@ class DeskPetApp:
         # 托盘
         self.tray = QSystemTrayIcon(icon, app)
         self.tray.setToolTip(f"DeskPet {config.VERSION} · 桌面速记小企鹅")
+        from .icons import icon as ui_icon
+
         menu = QMenu()
         menu.setStyleSheet(
-            "QMenu{background:#23262f;color:#dfe3ea;border:1px solid #3b3f4d;}"
-            "QMenu::item{padding:5px 20px;}QMenu::item:selected{background:#3a5a86;}"
+            "QMenu{background:#23262f;color:#dfe3ea;border:1px solid #3b3f4d;"
+            "font-size:12px;padding:6px;}"
+            "QMenu::item{padding:6px 26px 6px 10px;border-radius:6px;}"
+            "QMenu::item:selected{background:#3a5a86;}"
+            "QMenu::icon{margin:0 8px 0 4px;}"
+            "QMenu::separator{height:1px;background:#3b3f4d;margin:5px 8px;}"
         )
-        for text, slot in [
-            ("📝 速记", self.open_note),
-            ("⏰ 提醒管理", self.open_reminder),
-            ("📄 写日报", self.open_report),
-            ("🐧 显示/隐藏企鹅", self.toggle_pet),
+        for ic_name, text, slot in [
+            ("note", "速记", self.open_note),
+            ("bell", "提醒管理", self.open_reminder),
+            ("doc", "写日报", self.open_report),
+            ("eye", "显示/隐藏企鹅", self.toggle_pet),
         ]:
-            act = QAction(text, menu)
+            act = QAction(ui_icon(ic_name), text, menu)
             act.triggered.connect(slot)
             menu.addAction(act)
         menu.addSeparator()

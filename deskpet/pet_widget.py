@@ -398,18 +398,22 @@ class PetWidget(QWidget):
         self.bubble.say(random.choice(config.QUOTES), anchor)
 
     def _show_menu(self, pos):
+        from .icons import icon
+
         menu = QMenu(self)
         menu.setStyleSheet(
             "QMenu{background:#23262f;color:#dfe3ea;border:1px solid #3b3f4d;"
-            "font-size:12px;padding:4px;}"
-            "QMenu::item{padding:5px 22px;border-radius:5px;}"
+            "font-size:12px;padding:6px;}"
+            "QMenu::item{padding:6px 26px 6px 10px;border-radius:6px;}"
             "QMenu::item:selected{background:#3a5a86;}"
+            "QMenu::icon{margin:0 8px 0 4px;}"
+            "QMenu::separator{height:1px;background:#3b3f4d;margin:5px 8px;}"
         )
-        menu.addAction("📝 速记", self.request_note.emit)
-        menu.addAction("⏰ 提醒", self.request_reminder.emit)
-        menu.addAction("📄 写日报", self.request_report.emit)
+        menu.addAction(icon("note"), "速记", self.request_note.emit)
+        menu.addAction(icon("bell"), "提醒", self.request_reminder.emit)
+        menu.addAction(icon("doc"), "写日报", self.request_report.emit)
         menu.addSeparator()
-        menu.addAction("❌ 退出", self.request_quit.emit)
+        menu.addAction(icon("quit"), "退出", self.request_quit.emit)
         menu.exec(pos)
 
     # ================= 对外接口 =================
@@ -422,7 +426,7 @@ class PetWidget(QWidget):
         self.leave_timer.stop()
         self.update()
         anchor = self.mapToGlobal(QPointF(W / 2, 14))
-        self.bubble.say(f"⏰ {text}", anchor, ms=6000)
+        self.bubble.say(f"提醒：{text}", anchor, ms=6000)
 
     def clear_alert(self):
         if self.anim == "alert":

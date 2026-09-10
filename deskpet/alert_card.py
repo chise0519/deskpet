@@ -48,9 +48,17 @@ class AlertCard(QWidget):
         root.setContentsMargins(14, 11, 14, 11)
         root.setSpacing(5)
 
-        t = QLabel("⏰ 提醒时间到")
+        t = QLabel("提醒时间到")
         t.setObjectName("title")
-        root.addWidget(t)
+        bell = QLabel()
+        from .icons import icon as ui_icon
+        bell.setPixmap(ui_icon("bell", 16).pixmap(16, 16))
+        row0 = QHBoxLayout()
+        row0.setSpacing(6)
+        row0.addWidget(bell)
+        row0.addWidget(t)
+        row0.addStretch(1)
+        root.addLayout(row0)
 
         self.body = QLabel("")
         self.body.setObjectName("body")

@@ -50,7 +50,11 @@ class ReportWindow(QWidget):
         root.setSpacing(8)
 
         hdr = QHBoxLayout()
-        t = QLabel("📄 今日日报")
+        from .icons import icon as ui_icon
+        doc_ic = QLabel()
+        doc_ic.setPixmap(ui_icon("doc", 16).pixmap(16, 16))
+        hdr.addWidget(doc_ic)
+        t = QLabel("今日日报")
         t.setObjectName("hdr")
         hdr.addWidget(t)
         hdr.addStretch(1)
@@ -80,8 +84,9 @@ class ReportWindow(QWidget):
         b_saveas = QPushButton("另存为…")
         b_saveas.clicked.connect(self._save_as)
         btns.addWidget(b_saveas)
-        b_save = QPushButton("💾 保存日报")
+        b_save = QPushButton("保存日报")
         b_save.setObjectName("save")
+        b_save.setIcon(ui_icon("doc", 14))
         b_save.clicked.connect(self._save)
         btns.addWidget(b_save)
         root.addLayout(btns)
