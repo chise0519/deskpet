@@ -27,23 +27,10 @@ POLL_MS = 15_000
 
 
 def make_icon() -> QIcon:
-    """程序化画一个小企鹅头像当图标（托盘/窗口）。"""
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setPen(Qt.NoPen)
-    p.setBrush(QColor(38, 42, 56))
-    p.drawEllipse(8, 4, 48, 56)
-    p.setBrush(QColor(245, 246, 250))
-    p.drawEllipse(16, 22, 32, 36)
-    p.setBrush(QColor(245, 166, 66))
-    p.drawEllipse(26, 34, 12, 8)
-    p.setBrush(QColor(25, 28, 38))
-    p.drawEllipse(20, 20, 6, 7)
-    p.drawEllipse(38, 20, 6, 7)
-    p.end()
-    return QIcon(pm)
+    """品牌图标：与日报窗口左上角同一个（icons.app_icon，多尺寸）。"""
+    from .icons import app_icon
+
+    return app_icon()
 
 
 class DeskPetApp:

@@ -4,8 +4,10 @@
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import (
+    QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap,
+)
 
 _CACHE: dict = {}
 
@@ -144,6 +146,104 @@ def _draw_spark(p, c):
     p.drawPath(path)
     p.drawLine(QPointF(37, 8), QPointF(37, 14))
     p.drawLine(QPointF(34, 11), QPointF(40, 11))
+
+
+def draw_app_icon(p: QPainter, size: int):
+    """品牌图标：圆角蓝底 + 迷你企鹅（与桌宠同造型语言）。
+
+    在 size×size 画布上按 48 单位坐标系缩放绘制，多尺寸共用一套几何，
+    16px 下仍有清晰剪影（底板+黑身+白肚+橙嘴）。
+    """
+    from PySide6.QtGui import QLinearGradient
+
+    s = size / 48.0
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+
+    def R(x, y, w, h):
+        return QRectF(x * s, y * s, w * s, h * s)
+
+    def E(cx, cy, rx, ry):
+        p.drawEllipse(QPointF(cx * s, cy * s), rx * s, ry * s)
+
+    # 底板：圆角 + 竖向渐变（上亮下深），任务栏浅/深色主题都醒目
+    grad = QLinearGradient(0, 0, 0, size)
+    grad.setColorAt(0.0, QColor(91, 143, 212))
+    grad.setColorAt(1.0, QColor(43, 84, 143))
+    p.setBrush(QBrush(grad))
+    p.drawRoundedRect(R(0.5, 0.5, 47, 47), 11 * s, 11 * s)
+    # 顶部高光
+    p.setBrush(QColor(255, 255, 255, 26))
+    p.drawRoundedRect(R(3, 2.5, 42, 12), 6 * s, 6 * s)
+
+    # 影子
+    p.setBrush(QColor(0, 0, 0, 55))
+    E(24, 41.5, 13, 3)
+
+    # 脚
+    p.setBrush(QColor(240, 150, 50))
+    E(17.5, 40, 5, 2.4)
+    E(30.5, 40, 5, 2.4)
+
+    # 身体（黑）
+    p.setBrush(QColor(38, 42, 56))
+    p.drawRoundedRect(R(11, 10, 26, 31), 12 * s, 12 * s)
+
+    # 肚皮（白）
+    p.setBrush(QColor(245, 246, 250))
+    p.drawRoundedRect(R(15, 20, 18, 19), 8.5 * s, 8.5 * s)
+
+    # 翅膀（身体两侧深色小弧）
+    p.setBrush(QColor(30, 33, 45))
+    E(11.5, 26, 3, 7)
+    E(36.5, 26, 3, 7)
+
+    # 眼睛
+    p.setBrush(QColor(250, 250, 252))
+    E(18.5, 17.5, 3.6, 4.2)
+    E(29.5, 17.5, 3.6, 4.2)
+    p.setBrush(QColor(25, 28, 38))
+    E(19.2, 18.2, 1.8, 2.2)
+    E(28.8, 18.2, 1.8, 2.2)
+    p.setBrush(QColor(255, 255, 255))
+    E(18.6, 17.2, 0.7, 0.7)
+    E(28.2, 17.2, 0.7, 0.7)
+
+    # 腮红
+    p.setBrush(QColor(255, 150, 160, 130))
+    E(14.5, 22.5, 2.6, 1.6)
+    E(33.5, 22.5, 2.6, 1.6)
+
+    # 嘴
+    p.setBrush(QColor(245, 166, 66))
+    path = QPainterPath()
+    path.moveTo(20 * s, 22.5 * s)
+    path.quadTo(24 * s, 28 * s, 28 * s, 22.5 * s)
+    path.quadTo(24 * s, 24.8 * s, 20 * s, 22.5 * s)
+    path.closeSubpath()
+    p.drawPath(path)
+
+
+_APP_ICON_CACHE: dict = {}
+
+
+def app_icon(sizes=(16, 20, 24, 32, 48, 64, 128, 256)):
+    """多尺寸品牌 QIcon（任务栏/托盘/标题栏/窗口内小图标共用）。"""
+    key = tuple(sizes)
+    if key in _APP_ICON_CACHE:
+        return _APP_ICON_CACHE[key]
+    from PySide6.QtGui import QIcon
+
+    qicon = QIcon()
+    for sz in sizes:
+        pm = QPixmap(sz, sz)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        draw_app_icon(p, sz)
+        p.end()
+        qicon.addPixmap(pm)
+    _APP_ICON_CACHE[key] = qicon
+    return qicon
 
 
 _DRAWERS = {
