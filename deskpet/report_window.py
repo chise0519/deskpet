@@ -5,14 +5,14 @@ import os
 import subprocess
 from datetime import date, datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTextEdit,
     QVBoxLayout, QWidget,
 )
 
-from . import config, report, storage
+from . import config, llm, report, storage
 
 CSS = """
 #reportWin { background: #1e2028; }
@@ -31,7 +31,29 @@ QPushButton {
 QPushButton:hover { background: #424a60; }
 QPushButton#save { background: #4a7fc1; }
 QPushButton#save:hover { background: #5a92d8; }
+QPushButton#polish { background: #6a4fa3; }
+QPushButton#polish:hover { background: #7d5fbe; }
+QPushButton:disabled { background: #2a2d38; color: #6f7889; }
 """
+
+
+class PolishWorker(QThread):
+    """后台调 LLM，避免卡 UI。"""
+
+    ok = Signal(str)
+    err = Signal(str)
+
+    def __init__(self, markdown: str, parent=None):
+        super().__init__(parent)
+        self.markdown = markdown
+
+    def run(self):
+        try:
+            self.ok.emit(llm.polish_report(self.markdown))
+        except llm.LLMError as e:
+            self.err.emit(str(e))
+        except Exception as e:  # noqa: BLE001
+            self.err.emit(f"润色失败：{e}")
 
 
 class ReportWindow(QWidget):
@@ -84,6 +106,12 @@ class ReportWindow(QWidget):
         b_saveas = QPushButton("另存为…")
         b_saveas.clicked.connect(self._save_as)
         btns.addWidget(b_saveas)
+        self.b_polish = QPushButton("一键润色")
+        self.b_polish.setObjectName("polish")
+        from .icons import icon as _ic
+        self.b_polish.setIcon(_ic("spark", 14))
+        self.b_polish.clicked.connect(self._polish)
+        btns.addWidget(self.b_polish)
         b_save = QPushButton("保存日报")
         b_save.setObjectName("save")
         b_save.setIcon(ui_icon("doc", 14))
@@ -108,6 +136,49 @@ class ReportWindow(QWidget):
         )
         self._last_path = path
         self.path_lbl.setText(f"已保存：{path}")
+
+    # ---------------- AI 润色 ----------------
+
+    def _polish(self):
+        md = self.editor.toPlainText()
+        if not md.strip():
+            QMessageBox.information(self, "DeskPet", "日报内容为空，先写点东西。")
+            return
+        self._pre_polish = md
+        self.b_polish.setEnabled(False)
+        self.b_polish.setText("润色中…")
+        self.path_lbl.setText("正在调用模型润色，请稍候…")
+        self._worker = PolishWorker(md, self)
+        self._worker.ok.connect(self._polish_ok)
+        self._worker.err.connect(self._polish_err)
+        self._worker.start()
+
+    def _polish_ok(self, polished: str):
+        self.b_polish.setEnabled(True)
+        self.b_polish.setText("一键润色")
+        self.editor.setPlainText(polished)
+        mode = config.load_config().get("polish_save", "new")
+        try:
+            if mode == "overwrite":
+                path = report.save_report(
+                    polished, self._day, config.reports_dir())
+                note = f"润色完成并已覆盖：{path.name}"
+            else:
+                path = report.save_report(
+                    polished, self._day, config.reports_dir(),
+                    suffix=".polished")
+                note = f"润色完成，另存为：{path.name}（原文未动）"
+        except OSError as e:
+            self.path_lbl.setText(f"润色完成但保存失败：{e}")
+            return
+        self._last_path = path
+        self.path_lbl.setText(note)
+
+    def _polish_err(self, msg: str):
+        self.b_polish.setEnabled(True)
+        self.b_polish.setText("一键润色")
+        self.path_lbl.setText("润色失败")
+        QMessageBox.warning(self, "AI 润色失败", msg)
 
     def _save_as(self):
         default = str(config.reports_dir() / f"{self._day.isoformat()}.md")

@@ -75,13 +75,16 @@ def build_report(day: Day, notes: list[dict], reminders: list[dict],
     return "\n".join(md)
 
 
-def save_report(content: str, day: Day, reports_dir) -> Path:
-    """保存为 reports/YYYY-MM-DD.md；已存在则先备份为 .md.bak。"""
+def save_report(content: str, day: Day, reports_dir, suffix: str = "") -> Path:
+    """保存为 reports/YYYY-MM-DD{suffix}.md；已存在则先备份为 .bak。
+
+    suffix 例如 ".polished" → YYYY-MM-DD.polished.md（润色版另存）。
+    """
     day = _to_date(day)
     reports_dir = Path(reports_dir)
     reports_dir.mkdir(parents=True, exist_ok=True)
-    path = reports_dir / f"{day.isoformat()}.md"
+    path = reports_dir / f"{day.isoformat()}{suffix}.md"
     if path.exists():
-        shutil.copy2(path, path.with_suffix(".md.bak"))
+        shutil.copy2(path, path.with_name(path.name + ".bak"))
     path.write_text(content, encoding="utf-8")
     return path

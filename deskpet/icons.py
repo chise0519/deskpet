@@ -16,6 +16,7 @@ COLORS = {
     "quit": "#e06c75",   # 退出：电源
     "eye": "#b39ddb",    # 显示/隐藏：眼睛
     "gear": "#9fb3c8",   # 设置：齿轮
+    "spark": "#c792ea",  # 润色：星光
 }
 
 
@@ -127,6 +128,24 @@ def _draw_gear(p, c):
         p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
 
+def _draw_spark(p, c):
+    """星光：四角星 + 小星点"""
+    _pen(p, c)
+    path = QPainterPath()
+    path.moveTo(24, 6)
+    path.lineTo(28, 20)
+    path.lineTo(42, 24)
+    path.lineTo(28, 28)
+    path.lineTo(24, 42)
+    path.lineTo(20, 28)
+    path.lineTo(6, 24)
+    path.lineTo(20, 20)
+    path.closeSubpath()
+    p.drawPath(path)
+    p.drawLine(QPointF(37, 8), QPointF(37, 14))
+    p.drawLine(QPointF(34, 11), QPointF(40, 11))
+
+
 _DRAWERS = {
     "note": _draw_note,
     "bell": _draw_bell,
@@ -134,6 +153,7 @@ _DRAWERS = {
     "quit": _draw_quit,
     "eye": _draw_eye,
     "gear": _draw_gear,
+    "spark": _draw_spark,
 }
 
 

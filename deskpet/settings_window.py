@@ -5,11 +5,12 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
+    QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout,
+    QWidget,
 )
 
-from . import autostart, config
+from . import autostart, config, llm
 from .quick_note import PANEL_CSS
 
 EXTRA_CSS = """
@@ -134,6 +135,62 @@ class SettingsWindow(QWidget):
         v.addLayout(row)
         root.addWidget(g)
 
+        # ---- AI 润色 ----
+        g = QGroupBox("AI 润色（一键润色日报）")
+        v = QVBoxLayout(g)
+        v.setSpacing(5)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("服务商"))
+        self.cmb_prov = QComboBox()
+        for key, meta in llm.PROVIDERS.items():
+            self.cmb_prov.addItem(meta["label"], key)
+        self.cmb_prov.currentIndexChanged.connect(self._on_provider)
+        row.addWidget(self.cmb_prov, 1)
+        v.addLayout(row)
+        fl = QFormLayout()
+        fl.setSpacing(5)
+        self.llm_url = QLineEdit()
+        self.llm_url.setPlaceholderText("OpenAI 兼容 Base URL")
+        fl.addRow("Base URL", self.llm_url)
+        self.llm_model = QLineEdit()
+        self.llm_model.setPlaceholderText("如 qwen-plus / glm-4-flash")
+        fl.addRow("模型", self.llm_model)
+        self.llm_key = QLineEdit()
+        self.llm_key.setEchoMode(QLineEdit.Password)
+        self.llm_key.setPlaceholderText("本地服务可留空")
+        fl.addRow("API Key", self.llm_key)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("超时"))
+        self.spin_timeout = QSpinBox()
+        self.spin_timeout.setRange(10, 600)
+        self.spin_timeout.setSuffix(" 秒")
+        row.addWidget(self.spin_timeout)
+        row.addStretch(1)
+        fl.addRow("", row)
+        v.addLayout(fl)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("润色后"))
+        self.cmb_save = QComboBox()
+        self.cmb_save.addItem("另存为 .polished.md（保留原文）", "new")
+        self.cmb_save.addItem("覆盖原日报文件", "overwrite")
+        row.addWidget(self.cmb_save, 1)
+        v.addLayout(row)
+        hint = QLabel("Key 仅存本机 config.json；切换服务商自动填默认地址/模型，可改。")
+        hint.setStyleSheet("color:#6f7889;font-size:10px;")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+        self.llm_url.editingFinished.connect(
+            lambda: self._set("llm_base_url", self.llm_url.text().strip()))
+        self.llm_model.editingFinished.connect(
+            lambda: self._set("llm_model", self.llm_model.text().strip()))
+        self.llm_key.editingFinished.connect(
+            lambda: self._set("llm_api_key", self.llm_key.text()))
+        self.spin_timeout.valueChanged.connect(
+            lambda v: self._set("llm_timeout", v))
+        self.cmb_save.currentIndexChanged.connect(
+            lambda _i: self._set("polish_save", self.cmb_save.currentData()))
+        root.addWidget(g)
+
         # ---- 系统 ----
         g = QGroupBox("系统")
         v = QVBoxLayout(g)
@@ -172,8 +229,28 @@ class SettingsWindow(QWidget):
         self.cb_beep.setChecked(bool(cfg.get("beep_on", True)))
         self.cb_notify.setChecked(bool(cfg.get("sys_notify", True)))
         self.spin_poll.setValue(int(cfg.get("poll_sec", 15)))
+        idx = self.cmb_prov.findData(cfg.get("llm_provider", "qwen"))
+        self.cmb_prov.setCurrentIndex(max(0, idx))
+        self.llm_url.setText(cfg.get("llm_base_url") or "")
+        self.llm_model.setText(cfg.get("llm_model") or "")
+        self.llm_key.setText(cfg.get("llm_api_key") or "")
+        self.spin_timeout.setValue(int(cfg.get("llm_timeout", 60)))
+        idx = self.cmb_save.findData(cfg.get("polish_save", "new"))
+        self.cmb_save.setCurrentIndex(max(0, idx))
         self.cb_auto.setChecked(autostart.is_enabled())
         self._loading = False
+
+    def _on_provider(self, _idx):
+        if getattr(self, "_loading", False):
+            return
+        key = self.cmb_prov.currentData()
+        meta = llm.PROVIDERS.get(key, {})
+        self._set("llm_provider", key)
+        if meta.get("base_url"):
+            self.llm_url.setText(meta["base_url"])
+            self.llm_model.setText(meta["model"])
+            self._set("llm_base_url", meta["base_url"])
+            self._set("llm_model", meta["model"])
 
     def _set(self, key, value):
         if getattr(self, "_loading", False):

@@ -40,6 +40,12 @@ _DEFAULTS = {
     "beep_on": True,
     "sys_notify": True,
     "poll_sec": 15,
+    "llm_provider": "qwen",
+    "llm_base_url": "",
+    "llm_model": "",
+    "llm_api_key": "",
+    "llm_timeout": 60,
+    "polish_save": "new",   # new=另存.polished.md / overwrite=覆盖原文件
 }
 
 
