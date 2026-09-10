@@ -82,6 +82,36 @@ def chat_complete(base_url: str, api_key: str, model: str,
         raise LLMError(f"模型返回结构异常：{str(payload)[:200]}") from e
 
 
+def test_connection(base_url: str, api_key: str, model: str,
+                    timeout: int = 15) -> tuple[bool, str]:
+    """连接自检：发一条最小请求，返回 (是否成功, 可读消息)。
+
+    用表单当前值而非已保存配置，改完不用先保存就能测。
+    """
+    import time as _time
+
+    base_url = (base_url or "").strip()
+    model = (model or "").strip()
+    if not base_url:
+        return False, "未填 Base URL"
+    if not model:
+        return False, "未填模型名"
+    if (not (api_key or "").strip()
+            and "localhost" not in base_url and "127.0.0.1" not in base_url):
+        return False, "未填 API Key（本地服务可留空）"
+    t0 = _time.monotonic()
+    try:
+        out = chat_complete(
+            base_url, api_key, model,
+            [{"role": "user", "content": "请只回复两个字：收到"}],
+            timeout=timeout, temperature=0.0)
+    except LLMError as e:
+        return False, str(e)
+    dt = _time.monotonic() - t0
+    preview = (out or "").replace("\n", " ").strip()[:40]
+    return True, f"连接正常 · 耗时 {dt:.1f}s · 模型回复：{preview or '（空）'}"
+
+
 def polish_report(markdown: str, cfg: dict | None = None) -> str:
     """一键润色入口：读设置 → 调模型 → 返回润色后全文。"""
     cfg = cfg if cfg is not None else config.load_config()

@@ -103,3 +103,32 @@ def test_local_endpoint_skips_key_check():
             "llm_model": "m", "llm_api_key": "", "llm_timeout": 2})
     assert "API Key" not in str(ei.value)
     assert "网络" in str(ei.value) or "超时" in str(ei.value)
+
+
+# ---------------- test_connection 自检 ----------------
+
+def test_conn_ok(server):
+    _Handler.mode = "ok"
+    ok, msg = llm.test_connection(server, "sk-test", "mock", timeout=5)
+    assert ok is True
+    assert "连接正常" in msg and "耗时" in msg
+
+
+def test_conn_http_error(server):
+    _Handler.mode = "http500"
+    ok, msg = llm.test_connection(server, "k", "m", timeout=5)
+    assert ok is False
+    assert "500" in msg
+
+
+def test_conn_missing_fields():
+    assert llm.test_connection("", "k", "m")[0] is False
+    assert llm.test_connection("http://x/v1", "k", "")[0] is False
+    ok, msg = llm.test_connection("https://x.example/v1", "", "m")
+    assert ok is False and "API Key" in msg
+
+
+def test_conn_unreachable():
+    ok, msg = llm.test_connection("http://127.0.0.1:1/v1", "", "m", timeout=2)
+    assert ok is False
+    assert "网络" in msg or "超时" in msg

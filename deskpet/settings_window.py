@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout,
@@ -35,6 +35,20 @@ QPushButton.mini {
 QPushButton.mini:hover { background: #424a60; }
 QLabel.hint { color: #6f7889; font-size: 10px; }
 """
+
+
+class ConnTestWorker(QThread):
+    """后台跑连接自检，避免卡设置窗口。"""
+
+    done = Signal(bool, str)
+
+    def __init__(self, base_url, api_key, model, timeout, parent=None):
+        super().__init__(parent)
+        self.args = (base_url, api_key, model, timeout)
+
+    def run(self):
+        ok, msg = llm.test_connection(*self.args)
+        self.done.emit(ok, msg)
 
 
 class SettingsWindow(QWidget):
@@ -175,6 +189,20 @@ class SettingsWindow(QWidget):
         self.cmb_save.addItem("覆盖原日报文件", "overwrite")
         row.addWidget(self.cmb_save, 1)
         v.addLayout(row)
+        row = QHBoxLayout()
+        self.b_test = QPushButton("测试连接")
+        self.b_test.setStyleSheet(
+            "background:#3a6b4f;color:#dfe3ea;border:none;border-radius:6px;"
+            "padding:5px 12px;font-size:12px;"
+        )
+        self.b_test.clicked.connect(self._test_conn)
+        row.addWidget(self.b_test)
+        row.addStretch(1)
+        v.addLayout(row)
+        self.test_lbl = QLabel("点“测试连接”自检：用上方当前填写值发一条最小请求。")
+        self.test_lbl.setStyleSheet("color:#6f7889;font-size:10px;")
+        self.test_lbl.setWordWrap(True)
+        v.addWidget(self.test_lbl)
         hint = QLabel("Key 仅存本机 config.json；切换服务商自动填默认地址/模型，可改。")
         hint.setStyleSheet("color:#6f7889;font-size:10px;")
         hint.setWordWrap(True)
@@ -279,6 +307,32 @@ class SettingsWindow(QWidget):
             subprocess.Popen(["explorer", str(d)])
         else:
             subprocess.Popen(["xdg-open", str(d)])
+
+    # ---------------- 连接自检 ----------------
+
+    def _test_conn(self):
+        self.b_test.setEnabled(False)
+        self.b_test.setText("检测中…")
+        self.test_lbl.setStyleSheet("color:#8b93a3;font-size:10px;")
+        self.test_lbl.setText("正在连接，请稍候…")
+        self._test_worker = ConnTestWorker(
+            self.llm_url.text().strip(),
+            self.llm_key.text(),
+            self.llm_model.text().strip(),
+            self.spin_timeout.value(),
+            self,
+        )
+        self._test_worker.done.connect(self._test_done)
+        self._test_worker.start()
+
+    def _test_done(self, ok: bool, msg: str):
+        self.b_test.setEnabled(True)
+        self.b_test.setText("测试连接")
+        if ok:
+            self.test_lbl.setStyleSheet("color:#7ee0a3;font-size:10px;")
+        else:
+            self.test_lbl.setStyleSheet("color:#e06c75;font-size:10px;")
+        self.test_lbl.setText(msg)
 
     def _reset_pos(self):
         cfg = config.load_config()
