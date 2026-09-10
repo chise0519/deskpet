@@ -63,6 +63,8 @@ class ReportWindow(QWidget):
         self.setWindowTitle("DeskPet · 日报")
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         self.setStyleSheet(CSS)
+        from .icons import app_icon
+        self.setWindowIcon(app_icon())
         self.resize(560, 520)
         self._day = date.today()
         self._last_path = None

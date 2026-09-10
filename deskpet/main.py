@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import ctypes
 import sys
 from datetime import datetime, timedelta
 
@@ -26,6 +27,15 @@ SINGLE_INSTANCE_KEY = "***"
 POLL_MS = 15_000
 
 
+def set_app_user_model_id():
+    """声明 AppUserModelID：让任务栏按钮用窗口图标而非 .py 文件关联图标。"""
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "chise.deskpet.app")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def make_icon() -> QIcon:
     """品牌图标：与日报窗口左上角同一个（icons.app_icon，多尺寸）。"""
     from .icons import app_icon
@@ -38,6 +48,7 @@ class DeskPetApp:
         self.app = app
         app.setQuitOnLastWindowClosed(False)  # 面板全关了也要活着
         app.setApplicationName(config.APP_NAME)
+        set_app_user_model_id()
         icon = make_icon()
         app.setWindowIcon(icon)
 
