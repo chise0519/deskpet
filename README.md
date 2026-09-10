@@ -45,7 +45,10 @@ py -3.14 -m venv .venv
 - 时钟：显示秒 / 显示日期星期 / 12小时制
 - 互动与提醒：气泡语录开关、beep 提示音、系统通知开关、轮询间隔
 - AI 润色：服务商（Qwen DashScope / GLM 智谱 / 自定义 OpenAI 兼容）、Base URL、
-  模型、API Key（密码框，仅存本机）、超时、润色后另存或覆盖；
+  模型（可下拉选择也可手输）、API Key（密码框，仅存本机）、超时、润色后另存或覆盖；
+  "自动发现"并发扫描本地 Ollama / llama-server / LM Studio / vLLM 及已填端点，
+  拉取 /models 列表自动填入；切换服务商或填完 Key 也会自动刷新模型列表；
+  环境变量 DASHSCOPE_API_KEY / ZHIPUAI_API_KEY / OPENAI_API_KEY 有值时自动带入；
   "测试连接"按钮用当前填写值发自检请求，成功显示耗时与模型回复，失败给具体原因
 - 系统：开机自启、重置企鹅位置
 

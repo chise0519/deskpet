@@ -6,10 +6,27 @@ API key 只存本地 config.json，绝不写日志。
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import config
+
+# 本地常见 OpenAI 兼容服务，自动扫描用
+LOCAL_ENDPOINTS = [
+    ("Ollama", "http://127.0.0.1:11434/v1"),
+    ("llama-server", "http://127.0.0.1:8080/v1"),
+    ("LM Studio", "http://127.0.0.1:1234/v1"),
+    ("vLLM", "http://127.0.0.1:8000/v1"),
+]
+
+# 环境变量里的 Key 自动带入（用户自己机器上的，不写日志）
+ENV_KEY_HINTS = {
+    "qwen": ["DASHSCOPE_API_KEY"],
+    "glm": ["ZHIPUAI_API_KEY", "GLM_API_KEY"],
+    "custom": ["OPENAI_API_KEY"],
+}
 
 PROVIDERS = {
     "qwen": {
@@ -80,6 +97,70 @@ def chat_complete(base_url: str, api_key: str, model: str,
         return payload["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError, AttributeError) as e:
         raise LLMError(f"模型返回结构异常：{str(payload)[:200]}") from e
+
+
+def env_key_hint(provider: str) -> str:
+    """从环境变量取该服务商的 Key（有则返回，无则空串）。"""
+    for name in ENV_KEY_HINTS.get(provider, []):
+        v = os.environ.get(name, "").strip()
+        if v:
+            return v
+    return ""
+
+
+def list_models(base_url: str, api_key: str = "", timeout: int = 5) -> list[str]:
+    """GET {base}/models，返回模型 id 列表。失败抛 LLMError。"""
+    url = base_url.rstrip("/") + "/models"
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise LLMError(f"模型列表接口 HTTP {e.code}") from e
+    except urllib.error.URLError as e:
+        raise LLMError(f"网络不通或地址错误：{e.reason}") from e
+    except TimeoutError as e:
+        raise LLMError(f"获取模型列表超时（{timeout}s）") from e
+    except json.JSONDecodeError as e:
+        raise LLMError("模型列表返回不是合法 JSON") from e
+    if isinstance(payload, dict):
+        data = payload.get("data") or payload.get("models") or []
+    elif isinstance(payload, list):
+        data = payload
+    else:
+        data = []
+    ids = [d.get("id") if isinstance(d, dict) else str(d) for d in data]
+    return [i for i in ids if i]
+
+
+def discover(extra=None, timeout: float = 1.5) -> list[dict]:
+    """自动发现可用模型服务。
+
+    扫描 LOCAL_ENDPOINTS（本地免 Key）+ extra=[(source, base_url, api_key)]
+    （如已填 Key 的云端）。并发探测 /models，返回
+    [{"source","base_url","api_key","models":[...]}]，探不到就跳过。
+    """
+    targets = [(name, base, "") for name, base in LOCAL_ENDPOINTS]
+    if extra:
+        targets += [(s, b, k) for s, b, k in extra if b]
+    out: list[dict] = []
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(list_models, b, k, timeout): (s, b, k)
+                for s, b, k in targets}
+        for fut in as_completed(futs):
+            src, base, key = futs[fut]
+            try:
+                models = fut.result()
+            except LLMError:
+                continue
+            if models:
+                out.append({"source": src, "base_url": base,
+                            "api_key": key, "models": models})
+    out.sort(key=lambda e: e["source"])
+    return out
 
 
 def test_connection(base_url: str, api_key: str, model: str,

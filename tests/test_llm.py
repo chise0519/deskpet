@@ -14,6 +14,17 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # 静音
         pass
 
+    def do_GET(self):
+        if _Handler.mode == "models":
+            resp = {"data": [{"id": "mock-a"}, {"id": "mock-b"}]}
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
@@ -33,6 +44,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"not json")
+        elif _Handler.mode == "models":
+            resp = {"data": [{"id": "mock-a"}, {"id": "mock-b"}]}
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode())
         # 记录收到的 messages 供断言
         _Handler.last_body = body
 
@@ -132,3 +149,43 @@ def test_conn_unreachable():
     ok, msg = llm.test_connection("http://127.0.0.1:1/v1", "", "m", timeout=2)
     assert ok is False
     assert "网络" in msg or "超时" in msg
+
+
+# ---------------- list_models / discover / env_key_hint ----------------
+
+def test_list_models(server):
+    _Handler.mode = "models"
+    ids = llm.list_models(server, "sk-test", timeout=5)
+    assert ids == ["mock-a", "mock-b"]
+
+
+def test_list_models_unreachable():
+    with pytest.raises(llm.LLMError):
+        llm.list_models("http://127.0.0.1:1/v1", timeout=1)
+
+
+def test_discover_finds_mock_server(server):
+    _Handler.mode = "models"
+    # 本地四个端口大概率没服务；extra 里放 mock 必中
+    found = llm.discover(extra=[("Mock", server, "sk-test")], timeout=1.5)
+    srcs = [f["source"] for f in found]
+    assert "Mock" in srcs
+    entry = next(f for f in found if f["source"] == "Mock")
+    assert entry["models"] == ["mock-a", "mock-b"]
+    assert entry["base_url"] == server
+
+
+def test_discover_empty_when_nothing():
+    found = llm.discover(extra=[], timeout=0.5)
+    # 真机上若恰好有本地服务则非空，只断言结构
+    assert isinstance(found, list)
+    for f in found:
+        assert {"source", "base_url", "api_key", "models"} <= set(f)
+
+
+def test_env_key_hint(monkeypatch):
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "sk-env")
+    assert llm.env_key_hint("qwen") == "sk-env"
+    monkeypatch.delenv("DASHSCOPE_API_KEY")
+    assert llm.env_key_hint("qwen") == ""
+    assert llm.env_key_hint("nosuch") == ""

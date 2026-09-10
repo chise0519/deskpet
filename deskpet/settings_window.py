@@ -51,6 +51,38 @@ class ConnTestWorker(QThread):
         self.done.emit(ok, msg)
 
 
+class DiscoverWorker(QThread):
+    """后台自动发现可用模型服务。"""
+
+    done = Signal(list)
+
+    def __init__(self, extra, parent=None):
+        super().__init__(parent)
+        self.extra = extra
+
+    def run(self):
+        try:
+            self.done.emit(llm.discover(self.extra))
+        except Exception:  # noqa: BLE001
+            self.done.emit([])
+
+
+class ModelsWorker(QThread):
+    """后台拉某个端点的模型列表（切服务商/填完 Key 时用）。"""
+
+    done = Signal(list)
+
+    def __init__(self, base_url, api_key, parent=None):
+        super().__init__(parent)
+        self.args = (base_url, api_key)
+
+    def run(self):
+        try:
+            self.done.emit(llm.list_models(*self.args, timeout=5))
+        except llm.LLMError:
+            self.done.emit([])
+
+
 class SettingsWindow(QWidget):
     """改完即存（config.save_config），无"确定/取消"心智负担。"""
 
@@ -166,8 +198,9 @@ class SettingsWindow(QWidget):
         self.llm_url = QLineEdit()
         self.llm_url.setPlaceholderText("OpenAI 兼容 Base URL")
         fl.addRow("Base URL", self.llm_url)
-        self.llm_model = QLineEdit()
-        self.llm_model.setPlaceholderText("如 qwen-plus / glm-4-flash")
+        self.llm_model = QComboBox()
+        self.llm_model.setEditable(True)
+        self.llm_model.lineEdit().setPlaceholderText("选一个或手输模型名")
         fl.addRow("模型", self.llm_model)
         self.llm_key = QLineEdit()
         self.llm_key.setEchoMode(QLineEdit.Password)
@@ -190,6 +223,13 @@ class SettingsWindow(QWidget):
         row.addWidget(self.cmb_save, 1)
         v.addLayout(row)
         row = QHBoxLayout()
+        self.b_discover = QPushButton("自动发现")
+        self.b_discover.setStyleSheet(
+            "background:#3a5a6b;color:#dfe3ea;border:none;border-radius:6px;"
+            "padding:5px 12px;font-size:12px;"
+        )
+        self.b_discover.clicked.connect(self._discover)
+        row.addWidget(self.b_discover)
         self.b_test = QPushButton("测试连接")
         self.b_test.setStyleSheet(
             "background:#3a6b4f;color:#dfe3ea;border:none;border-radius:6px;"
@@ -199,7 +239,7 @@ class SettingsWindow(QWidget):
         row.addWidget(self.b_test)
         row.addStretch(1)
         v.addLayout(row)
-        self.test_lbl = QLabel("点“测试连接”自检：用上方当前填写值发一条最小请求。")
+        self.test_lbl = QLabel("点“自动发现”扫描本地模型服务；点“测试连接”自检当前填写值。")
         self.test_lbl.setStyleSheet("color:#6f7889;font-size:10px;")
         self.test_lbl.setWordWrap(True)
         v.addWidget(self.test_lbl)
@@ -208,11 +248,15 @@ class SettingsWindow(QWidget):
         hint.setWordWrap(True)
         v.addWidget(hint)
         self.llm_url.editingFinished.connect(
-            lambda: self._set("llm_base_url", self.llm_url.text().strip()))
-        self.llm_model.editingFinished.connect(
-            lambda: self._set("llm_model", self.llm_model.text().strip()))
+            lambda: (self._set("llm_base_url", self.llm_url.text().strip()),
+                     self._refresh_models()))
+        self.llm_model.lineEdit().editingFinished.connect(
+            lambda: self._set("llm_model", self.llm_model.currentText().strip()))
+        self.llm_model.currentIndexChanged.connect(
+            lambda _i: self._set("llm_model", self.llm_model.currentText().strip()))
         self.llm_key.editingFinished.connect(
-            lambda: self._set("llm_api_key", self.llm_key.text()))
+            lambda: (self._set("llm_api_key", self.llm_key.text()),
+                     self._refresh_models()))
         self.spin_timeout.valueChanged.connect(
             lambda v: self._set("llm_timeout", v))
         self.cmb_save.currentIndexChanged.connect(
@@ -260,7 +304,7 @@ class SettingsWindow(QWidget):
         idx = self.cmb_prov.findData(cfg.get("llm_provider", "qwen"))
         self.cmb_prov.setCurrentIndex(max(0, idx))
         self.llm_url.setText(cfg.get("llm_base_url") or "")
-        self.llm_model.setText(cfg.get("llm_model") or "")
+        self._set_model_text(cfg.get("llm_model") or "")
         self.llm_key.setText(cfg.get("llm_api_key") or "")
         self.spin_timeout.setValue(int(cfg.get("llm_timeout", 60)))
         idx = self.cmb_save.findData(cfg.get("polish_save", "new"))
@@ -274,11 +318,88 @@ class SettingsWindow(QWidget):
         key = self.cmb_prov.currentData()
         meta = llm.PROVIDERS.get(key, {})
         self._set("llm_provider", key)
+        hint = llm.env_key_hint(key)
+        if hint and not self.llm_key.text():
+            self.llm_key.setText(hint)
+            self._set("llm_api_key", hint)
         if meta.get("base_url"):
             self.llm_url.setText(meta["base_url"])
-            self.llm_model.setText(meta["model"])
+            self._set_model_text(meta["model"])
             self._set("llm_base_url", meta["base_url"])
             self._set("llm_model", meta["model"])
+        self._refresh_models()
+
+    def _set_model_text(self, text: str):
+        """设置模型框文本（不触发保存信号）。"""
+        i = self.llm_model.findText(text)
+        if i >= 0:
+            self.llm_model.setCurrentIndex(i)
+        else:
+            self.llm_model.setCurrentIndex(-1)
+            self.llm_model.setEditText(text)
+
+    # ---------------- 自动发现 ----------------
+
+    def _discover(self):
+        self.b_discover.setEnabled(False)
+        self.b_discover.setText("扫描中…")
+        self.test_lbl.setStyleSheet("color:#8b93a3;font-size:10px;")
+        self.test_lbl.setText("正在扫描本地模型服务与已配置端点…")
+        extra = []
+        prov = self.cmb_prov.currentData()
+        meta = llm.PROVIDERS.get(prov, {})
+        key = self.llm_key.text()
+        if meta.get("base_url") and key:
+            extra.append((meta["label"], meta["base_url"], key))
+        cur = self.llm_url.text().strip()
+        if cur and cur not in [b for _, b in llm.LOCAL_ENDPOINTS]:
+            extra.append(("当前填写", cur, key))
+        self._disc_worker = DiscoverWorker(extra, self)
+        self._disc_worker.done.connect(self._discover_done)
+        self._disc_worker.start()
+
+    def _discover_done(self, found: list):
+        self.b_discover.setEnabled(True)
+        self.b_discover.setText("自动发现")
+        if not found:
+            self.test_lbl.setStyleSheet("color:#e06c75;font-size:10px;")
+            self.test_lbl.setText(
+                "未发现可用模型服务。本地可装 Ollama/llama-server；"
+                "云端请先填 API Key 再点自动发现，或直接手填 Base URL/模型。")
+            return
+        self._found = found
+        self.test_lbl.setStyleSheet("color:#7ee0a3;font-size:10px;")
+        self.test_lbl.setText(
+            "发现 " + "；".join(
+                f"{f['source']}（{len(f['models'])} 个模型）" for f in found)
+            + " —— 已填入第一个，可改。")
+        first = found[0]
+        self.llm_url.setText(first["base_url"])
+        if first["api_key"]:
+            self.llm_key.setText(first["api_key"])
+        self._set("llm_base_url", first["base_url"])
+        self._set("llm_api_key", first["api_key"])
+        self._fill_models(first["models"])
+
+    def _fill_models(self, models: list):
+        cur = self.llm_model.currentText().strip()
+        self.llm_model.blockSignals(True)
+        self.llm_model.clear()
+        self.llm_model.addItems(models)
+        self.llm_model.blockSignals(False)
+        if cur and cur in models:
+            self._set_model_text(cur)
+        elif models:
+            self._set_model_text(models[0])
+            self._set("llm_model", models[0])
+
+    def _refresh_models(self):
+        base = self.llm_url.text().strip()
+        if not base:
+            return
+        self._models_worker = ModelsWorker(base, self.llm_key.text(), self)
+        self._models_worker.done.connect(self._fill_models)
+        self._models_worker.start()
 
     def _set(self, key, value):
         if getattr(self, "_loading", False):
@@ -318,7 +439,7 @@ class SettingsWindow(QWidget):
         self._test_worker = ConnTestWorker(
             self.llm_url.text().strip(),
             self.llm_key.text(),
-            self.llm_model.text().strip(),
+            self.llm_model.currentText().strip(),
             self.spin_timeout.value(),
             self,
         )
