@@ -51,6 +51,11 @@ py -3.14 -m venv .venv
   拉取 /models 列表自动填入；切换服务商或填完 Key 也会自动刷新模型列表；
   环境变量 DASHSCOPE_API_KEY / ZHIPUAI_API_KEY / OPENAI_API_KEY 有值时自动带入；
   "测试连接"按钮用当前填写值发自检请求，成功显示耗时与模型回复，失败给具体原因
+- 润色技能：设置 → AI 润色 → 润色技能。技能是带 frontmatter 的 .md 指令文件
+  （name/description + 正文），存放在 `%APPDATA%\DeskPet\skills\`；
+  点"添加…"选 .md 入库并选中，"删除"移除；选中后其正文作为润色的 system prompt
+  （自动附加"不编造事实"基础约束），选"内置润色提示"则用默认提示词。
+  后续新增技能：丢 .md 进目录或设置里添加即可
 - 系统：开机自启、重置企鹅位置
 
 所有设置改完即存到 `%APPDATA%\DeskPet\config.json`。
