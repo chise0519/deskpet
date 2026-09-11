@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QCursor, QFont
 from PySide6.QtWidgets import (
-    QCheckBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QCheckBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QMenu, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -34,11 +34,6 @@ QPushButton#addBtn {
     border-radius: 8px; padding: 6px 14px; font-size: 13px;
 }
 QPushButton#addBtn:hover { background: #5a92d8; }
-QPushButton#miniBtn {
-    background: #33384a; color: #dfe3ea; border: none;
-    border-radius: 5px; padding: 2px 8px; font-size: 12px;
-}
-QPushButton#miniBtn:hover { background: #424a60; }
 QListWidget {
     background: transparent; border: none; color: #dfe3ea; font-size: 13px;
     outline: none;
@@ -59,7 +54,7 @@ QMenu::item:selected { background: #3a5a86; }
 class NoteRow(QWidget):
     toggled = Signal(int, bool)
     removed = Signal(int)
-    edited = Signal(int, str)   # (id, 新内容)
+    edit_requested = Signal(int, str)   # (id, 当前内容) → 回填到上方编辑框
 
     def __init__(self, note: dict, parent=None):
         super().__init__(parent)
@@ -69,7 +64,7 @@ class NoteRow(QWidget):
         lay.setContentsMargins(6, 1, 4, 1)
         self.box = QCheckBox(note["content"])
         self.box.setChecked(bool(note["done"]))
-        self.box.setToolTip(note["created_at"][11:16])
+        self.box.setToolTip("双击或右键可编辑")
         if note["done"]:
             f = self.box.font()
             f.setStrikeOut(True)
@@ -77,50 +72,16 @@ class NoteRow(QWidget):
             self.box.setStyleSheet("color:#7d8797;")
         self.box.toggled.connect(lambda on: self.toggled.emit(self.note_id, on))
         lay.addWidget(self.box, 1)
-        # 编辑态控件（默认隐藏）
-        self.edit_box = QLineEdit(note["content"])
-        self.edit_box.returnPressed.connect(self._commit_edit)
-        self.edit_box.setVisible(False)
-        lay.addWidget(self.edit_box, 1)
-        self.b_ok = QPushButton("✓")
-        self.b_ok.setObjectName("miniBtn")
-        self.b_ok.setFixedSize(26, 22)
-        self.b_ok.clicked.connect(self._commit_edit)
-        self.b_ok.setVisible(False)
-        lay.addWidget(self.b_ok)
-        self.b_cancel = QPushButton("×")
-        self.b_cancel.setObjectName("miniBtn")
-        self.b_cancel.setFixedSize(26, 22)
-        self.b_cancel.clicked.connect(self._cancel_edit)
-        self.b_cancel.setVisible(False)
-        lay.addWidget(self.b_cancel)
 
-    def start_edit(self):
-        self.box.setVisible(False)
-        self.edit_box.setText(self._content)
-        self.edit_box.setVisible(True)
-        self.b_ok.setVisible(True)
-        self.b_cancel.setVisible(True)
-        self.edit_box.setFocus()
-        self.edit_box.selectAll()
-
-    def _commit_edit(self):
-        text = self.edit_box.text().strip()
-        if not text or text == self._content:
-            self._cancel_edit()
-            return
-        self.edited.emit(self.note_id, text)
-
-    def _cancel_edit(self):
-        self.edit_box.setVisible(False)
-        self.b_ok.setVisible(False)
-        self.b_cancel.setVisible(False)
-        self.box.setVisible(True)
+    def mouseDoubleClickEvent(self, ev):
+        self.edit_requested.emit(self.note_id, self._content)
+        ev.accept()
 
     def contextMenuEvent(self, ev):
         menu = QMenu(self)
         act_edit = QAction("编辑这条", menu)
-        act_edit.triggered.connect(self.start_edit)
+        act_edit.triggered.connect(
+            lambda: self.edit_requested.emit(self.note_id, self._content))
         menu.addAction(act_edit)
         act = QAction("删除这条", menu)
         act.triggered.connect(lambda: self.removed.emit(self.note_id))
@@ -172,10 +133,10 @@ class QuickNotePanel(QWidget):
         row.addWidget(self.edit, 1)
         col = QVBoxLayout()
         col.setSpacing(6)
-        add = QPushButton("添加")
-        add.setObjectName("addBtn")
-        add.clicked.connect(self._add)
-        col.addWidget(add)
+        self.add_btn = QPushButton("添加")
+        self.add_btn.setObjectName("addBtn")
+        self.add_btn.clicked.connect(self._save)
+        col.addWidget(self.add_btn)
         col.addStretch(1)
         row.addLayout(col)
         root.addLayout(row)
@@ -188,13 +149,17 @@ class QuickNotePanel(QWidget):
         self.stat = QLabel("")
         self.stat.setObjectName("stat")
         root.addWidget(self.stat)
+        self._editing_id = None
 
     def eventFilter(self, obj, ev):
-        """输入框：回车=保存（Shift+回车=换行）。"""
+        """输入框：回车=保存（Shift+回车=换行）；编辑态 Esc=取消。"""
         if obj is self.edit and ev.type() == ev.Type.KeyPress:
+            if ev.key() == Qt.Key_Escape and self._editing_id is not None:
+                self._cancel_edit()
+                return True
             if ev.key() in (Qt.Key_Return, Qt.Key_Enter) and not (
                     ev.modifiers() & Qt.ShiftModifier):
-                self._add()
+                self._save()
                 return True
         return super().eventFilter(obj, ev)
 
@@ -209,7 +174,7 @@ class QuickNotePanel(QWidget):
             row = NoteRow(n)
             row.toggled.connect(self._toggle)
             row.removed.connect(self._delete)
-            row.edited.connect(self._edit)
+            row.edit_requested.connect(self._start_edit)
             item = QListWidgetItem(self.list)
             item.setSizeHint(row.sizeHint())
             self.list.addItem(item)
@@ -217,26 +182,45 @@ class QuickNotePanel(QWidget):
         done = sum(1 for n in notes if n["done"])
         self.stat.setText(f"共 {len(notes)} 条 · 已完成 {done} 条")
 
-    def _add(self):
+    def _save(self):
+        """新增或保存修改，统一入口（按钮/回车共用）。"""
         text = self.edit.toPlainText().strip()
         if not text:
             return
-        storage.add_note(text)
+        if self._editing_id is not None:
+            try:
+                storage.update_note(self._editing_id, text)
+            except (ValueError, KeyError):
+                return
+            self._cancel_edit(refresh=False)
+        else:
+            storage.add_note(text)
         self.edit.clear()
         self.reload()
+
+    def _start_edit(self, note_id: int, content: str):
+        """把选中条目回填到上方编辑框，进入编辑态。"""
+        self._editing_id = note_id
+        self.edit.setPlainText(content)
+        self.edit.setFocus()
+        self.edit.moveCursor(self.edit.textCursor().MoveOperation.End)
+        self.add_btn.setText("保存修改")
+        self.stat.setText("编辑中：改完点「保存修改」或回车，Esc 取消")
+
+    def _cancel_edit(self, refresh: bool = True):
+        self._editing_id = None
+        self.edit.clear()
+        self.add_btn.setText("添加")
+        if refresh:
+            self.reload()
 
     def _toggle(self, note_id: int, _on: bool):
         storage.toggle_note(note_id)
         self.reload()
 
-    def _edit(self, note_id: int, text: str):
-        try:
-            storage.update_note(note_id, text)
-        except (ValueError, KeyError):
-            return
-        self.reload()
-
     def _delete(self, note_id: int):
+        if self._editing_id == note_id:
+            self._cancel_edit(refresh=False)
         storage.delete_note(note_id)
         self.reload()
 
