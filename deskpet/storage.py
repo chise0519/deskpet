@@ -120,6 +120,17 @@ def delete_note(note_id: int) -> None:
     _exec("DELETE FROM notes WHERE id=?", (note_id,))
 
 
+def update_note(note_id: int, content: str) -> dict:
+    """改速记内容；空内容拒绝，不存在的 id 抛 KeyError。"""
+    text = content.strip()
+    if not text:
+        raise ValueError("速记内容不能为空")
+    if not _rows("SELECT id FROM notes WHERE id=?", (note_id,)):
+        raise KeyError(note_id)
+    _exec("UPDATE notes SET content=? WHERE id=?", (text, note_id))
+    return _rows("SELECT * FROM notes WHERE id=?", (note_id,))[0]
+
+
 # ---------------- reminders ----------------
 
 def add_reminder(content: str, due_at: When, repeat: str = "once") -> int:

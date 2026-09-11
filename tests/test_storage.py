@@ -30,6 +30,22 @@ def test_note_day_filter(db):
     assert len(day) == 1 and day[0]["content"] == "今天的"
 
 
+def test_note_update(db):
+    nid = storage.add_note("原始内容")
+    got = storage.update_note(nid, "  改过的内容  ")
+    assert got["content"] == "改过的内容"
+    assert storage.list_notes()[0]["content"] == "改过的内容"
+    with pytest.raises(ValueError):
+        storage.update_note(nid, "   ")
+    with pytest.raises(KeyError):
+        storage.update_note(99999, "x")
+    # 完成状态不因编辑丢失
+    storage.toggle_note(nid)
+    storage.update_note(nid, "再改")
+    row = storage.list_notes()[0]
+    assert row["done"] == 1 and row["content"] == "再改"
+
+
 def test_note_toggle_and_delete(db):
     nid = storage.add_note("开会")
     n = storage.toggle_note(nid)
