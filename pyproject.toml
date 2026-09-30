@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deskpet"
-version = "1.2.2"
+version = "1.2.3"
 description = "A floating desktop pet, quick-note and reminder assistant"
 readme = "README.md"
 requires-python = ">=3.10"

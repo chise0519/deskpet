@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -57,6 +58,34 @@ QPushButton.mini {
 QPushButton.mini:hover { background: #424a60; }
 QLabel.hint { color: #6f7889; font-size: 10px; }
 """
+
+COMBO_POPUP_CSS = """
+QListView {
+    background-color: #23262f;
+    color: #eceff4;
+    border: 1px solid #454b5b;
+    outline: 0;
+    selection-background-color: #3a5a86;
+    selection-color: #ffffff;
+}
+QListView::item { min-height: 24px; padding: 4px 8px; }
+QListView::item:hover { background-color: #303849; color: #ffffff; }
+QListView::item:selected { background-color: #3a5a86; color: #ffffff; }
+"""
+
+
+def apply_combo_popup_theme(combo: QComboBox) -> None:
+    """给独立弹出的下拉列表显式应用暗色主题与调色板。"""
+    view = combo.view()
+    view.setStyleSheet(COMBO_POPUP_CSS)
+    palette = view.palette()
+    palette.setColor(QPalette.Base, QColor("#23262f"))
+    palette.setColor(QPalette.Window, QColor("#23262f"))
+    palette.setColor(QPalette.Text, QColor("#eceff4"))
+    palette.setColor(QPalette.WindowText, QColor("#eceff4"))
+    palette.setColor(QPalette.Highlight, QColor("#3a5a86"))
+    palette.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+    view.setPalette(palette)
 
 
 class ConnTestWorker(QThread):
@@ -223,6 +252,7 @@ class SettingsWindow(QWidget):
         self.cmb_prov = QComboBox()
         for key, meta in llm.PROVIDERS.items():
             self.cmb_prov.addItem(meta["label"], key)
+        apply_combo_popup_theme(self.cmb_prov)
         self.cmb_prov.currentIndexChanged.connect(self._on_provider)
         row.addWidget(self.cmb_prov, 1)
         v.addLayout(row)
@@ -232,26 +262,11 @@ class SettingsWindow(QWidget):
         self.llm_url.setPlaceholderText("OpenAI 兼容 Base URL")
         fl.addRow("Base URL", self.llm_url)
         self.llm_model = QComboBox()
-        self.llm_model.setEditable(True)
-        self.llm_model.setInsertPolicy(QComboBox.NoInsert)
+        self.llm_model.setEditable(False)
         self.llm_model.setMaxVisibleItems(12)
-        self.llm_model.lineEdit().setPlaceholderText("选一个或手输模型名")
-        model_row = QHBoxLayout()
-        model_row.setSpacing(4)
-        model_row.addWidget(self.llm_model, 1)
-        self.b_model_dropdown = QPushButton("▼")
-        self.b_model_dropdown.setFixedWidth(34)
-        self.b_model_dropdown.setEnabled(False)
-        self.b_model_dropdown.setToolTip("请先自动发现模型")
-        self.b_model_dropdown.setStyleSheet(
-            "QPushButton{background:#33384a;color:#dfe3ea;border:none;border-radius:6px;"
-            "padding:5px;font-size:12px;}"
-            "QPushButton:hover{background:#424a60;}"
-            "QPushButton:disabled{background:#292c36;color:#626978;}"
-        )
-        self.b_model_dropdown.clicked.connect(self.llm_model.showPopup)
-        model_row.addWidget(self.b_model_dropdown)
-        fl.addRow("模型选择", model_row)
+        apply_combo_popup_theme(self.llm_model)
+        self.llm_model.setPlaceholderText("自动发现后选择模型")
+        fl.addRow("模型选择", self.llm_model)
         self.llm_key = QLineEdit()
         self.llm_key.setEchoMode(QLineEdit.Password)
         self.llm_key.setPlaceholderText("本地服务可留空")
@@ -270,11 +285,13 @@ class SettingsWindow(QWidget):
         self.cmb_save = QComboBox()
         self.cmb_save.addItem("另存为 .polished.md（保留原文）", "new")
         self.cmb_save.addItem("覆盖原日报文件", "overwrite")
+        apply_combo_popup_theme(self.cmb_save)
         row.addWidget(self.cmb_save, 1)
         v.addLayout(row)
         row = QHBoxLayout()
         row.addWidget(QLabel("润色技能"))
         self.cmb_skill = QComboBox()
+        apply_combo_popup_theme(self.cmb_skill)
         self.cmb_skill.currentIndexChanged.connect(self._on_skill)
         row.addWidget(self.cmb_skill, 1)
         b_add = QPushButton("添加…")
@@ -321,7 +338,6 @@ class SettingsWindow(QWidget):
         hint.setWordWrap(True)
         v.addWidget(hint)
         self.llm_url.editingFinished.connect(lambda: (self._save_form(), self._refresh_models()))
-        self.llm_model.lineEdit().editingFinished.connect(self._save_form)
         self.llm_model.currentIndexChanged.connect(lambda _i: self._save_form())
         self.llm_key.editingFinished.connect(lambda: (self._save_form(), self._refresh_models()))
         self.spin_timeout.valueChanged.connect(lambda v: self._set("llm_timeout", v))
@@ -431,11 +447,13 @@ class SettingsWindow(QWidget):
     def _set_model_text(self, text: str):
         """设置模型框文本（不触发保存信号）。"""
         i = self.llm_model.findText(text)
-        if i >= 0:
-            self.llm_model.setCurrentIndex(i)
-        else:
+        if i < 0 and text:
+            self.llm_model.addItem(text)
+            i = self.llm_model.count() - 1
+        if i < 0:
             self.llm_model.setCurrentIndex(-1)
-            self.llm_model.setEditText(text)
+        else:
+            self.llm_model.setCurrentIndex(i)
 
     # ---------------- 自动发现 ----------------
 
@@ -520,8 +538,6 @@ class SettingsWindow(QWidget):
         self.llm_model.clear()
         self.llm_model.addItems(models)
         self.llm_model.blockSignals(False)
-        self.b_model_dropdown.setEnabled(True)
-        self.b_model_dropdown.setToolTip(f"展开选择已发现的 {len(models)} 个模型")
         if cur and cur in models:
             self._set_model_text(cur)
         elif models:
