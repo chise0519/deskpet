@@ -41,7 +41,7 @@ QComboBox {
     background: #1b1d25; color: #eceff4; border: 1px solid #3b3f4d;
     border-radius: 6px; padding: 5px 8px; font-size: 12px;
 }
-QComboBox::drop-down { border: none; width: 20px; }
+QComboBox::drop-down { border-left: 1px solid #3b3f4d; width: 26px; }
 QComboBox QAbstractItemView {
     background: #23262f; color: #eceff4; selection-background-color: #3a5a86;
 }
@@ -233,8 +233,25 @@ class SettingsWindow(QWidget):
         fl.addRow("Base URL", self.llm_url)
         self.llm_model = QComboBox()
         self.llm_model.setEditable(True)
+        self.llm_model.setInsertPolicy(QComboBox.NoInsert)
+        self.llm_model.setMaxVisibleItems(12)
         self.llm_model.lineEdit().setPlaceholderText("选一个或手输模型名")
-        fl.addRow("模型", self.llm_model)
+        model_row = QHBoxLayout()
+        model_row.setSpacing(4)
+        model_row.addWidget(self.llm_model, 1)
+        self.b_model_dropdown = QPushButton("▼")
+        self.b_model_dropdown.setFixedWidth(34)
+        self.b_model_dropdown.setEnabled(False)
+        self.b_model_dropdown.setToolTip("请先自动发现模型")
+        self.b_model_dropdown.setStyleSheet(
+            "QPushButton{background:#33384a;color:#dfe3ea;border:none;border-radius:6px;"
+            "padding:5px;font-size:12px;}"
+            "QPushButton:hover{background:#424a60;}"
+            "QPushButton:disabled{background:#292c36;color:#626978;}"
+        )
+        self.b_model_dropdown.clicked.connect(self.llm_model.showPopup)
+        model_row.addWidget(self.b_model_dropdown)
+        fl.addRow("模型选择", model_row)
         self.llm_key = QLineEdit()
         self.llm_key.setEchoMode(QLineEdit.Password)
         self.llm_key.setPlaceholderText("本地服务可留空")
@@ -293,7 +310,9 @@ class SettingsWindow(QWidget):
         row.addWidget(self.b_test)
         row.addStretch(1)
         v.addLayout(row)
-        self.test_lbl = QLabel("点“自动发现”扫描本地模型服务；点“测试连接”自检当前填写值。")
+        self.test_lbl = QLabel(
+            "点“自动发现”扫描模型服务；发现后从“模型选择”下拉框切换模型。"
+        )
         self.test_lbl.setStyleSheet("color:#6f7889;font-size:10px;")
         self.test_lbl.setWordWrap(True)
         v.addWidget(self.test_lbl)
@@ -501,6 +520,8 @@ class SettingsWindow(QWidget):
         self.llm_model.clear()
         self.llm_model.addItems(models)
         self.llm_model.blockSignals(False)
+        self.b_model_dropdown.setEnabled(True)
+        self.b_model_dropdown.setToolTip(f"展开选择已发现的 {len(models)} 个模型")
         if cur and cur in models:
             self._set_model_text(cur)
         elif models:

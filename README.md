@@ -13,7 +13,7 @@ DeskPet 是一个支持 Ubuntu 与 Windows 的 PySide6 桌面挂件：
 最简单的安装方式是从 [Releases](https://github.com/chise0519/deskpet/releases) 下载对应架构的 `.deb`，然后运行：
 
 ```bash
-sudo apt install ./deskpet_1.2.1_amd64.deb
+sudo apt install ./deskpet_1.2.2_amd64.deb
 ```
 
 安装后可在应用菜单搜索 **DeskPet**。卸载时运行：
