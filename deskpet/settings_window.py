@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -425,14 +426,10 @@ class SettingsWindow(QWidget):
         self.test_lbl.setStyleSheet("color:#8b93a3;font-size:10px;")
         self.test_lbl.setText("正在扫描本地模型服务与已配置端点…")
         extra = []
-        prov = self.cmb_prov.currentData()
-        meta = llm.PROVIDERS.get(prov, {})
         key = self.llm_key.text()
-        if meta.get("base_url") and key:
-            extra.append((meta["label"], meta["base_url"], key))
         cur = self.llm_url.text().strip()
-        if cur and cur not in [b for _, b in llm.LOCAL_ENDPOINTS]:
-            extra.append(("当前填写", cur, key))
+        if cur:
+            extra.append(("当前配置", cur, key))
         self._disc_worker = DiscoverWorker(extra, self)
         self._disc_worker.done.connect(self._discover_done)
         self._disc_worker.start()
@@ -448,18 +445,53 @@ class SettingsWindow(QWidget):
             )
             return
         self._found = found
+        current_url = llm.normalize_base_url(self.llm_url.text())
+        preferred = next(
+            (
+                index
+                for index, entry in enumerate(found)
+                if llm.normalize_base_url(entry["base_url"]) == current_url
+            ),
+            0,
+        )
+        labels = [
+            f"{entry['source']} · {entry['base_url']} · {len(entry['models'])} 个模型"
+            for entry in found
+        ]
+        chosen = preferred
+        if len(found) > 1:
+            label, accepted = QInputDialog.getItem(
+                self,
+                "选择模型服务",
+                "发现多个可用服务，请选择要使用的一个：",
+                labels,
+                preferred,
+                False,
+            )
+            if not accepted:
+                self.test_lbl.setStyleSheet("color:#8b93a3;font-size:10px;")
+                self.test_lbl.setText(f"发现 {len(found)} 个可用服务；已取消选择，配置未更改。")
+                return
+            chosen = labels.index(label)
+        self._apply_discovered(found[chosen], len(found))
+
+    def _apply_discovered(self, entry: dict, total: int):
+        """应用用户选择的发现结果；本地服务放进“自定义”档案。"""
+        if entry.get("local") and self.cmb_prov.currentData() != "custom":
+            index = self.cmb_prov.findData("custom")
+            if index >= 0:
+                self.cmb_prov.setCurrentIndex(index)
+
+        self.llm_url.setText(entry["base_url"])
+        # 本地端点通常免 Key，必须清掉表单里可能残留的云端 Key。
+        self.llm_key.setText(entry.get("api_key", "") if not entry.get("local") else "")
+        self._fill_models(entry["models"])
+        self._save_form()
         self.test_lbl.setStyleSheet("color:#7ee0a3;font-size:10px;")
         self.test_lbl.setText(
-            "发现 "
-            + "；".join(f"{f['source']}（{len(f['models'])} 个模型）" for f in found)
-            + " —— 已填入第一个，可改。"
+            f"共发现 {total} 个服务；已选择 {entry['source']}，"
+            f"加载 {len(entry['models'])} 个模型。"
         )
-        first = found[0]
-        self.llm_url.setText(first["base_url"])
-        if first["api_key"]:
-            self.llm_key.setText(first["api_key"])
-        self._save_form()
-        self._fill_models(first["models"])
 
     def _fill_models(self, models: list):
         if not models:

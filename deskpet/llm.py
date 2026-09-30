@@ -133,7 +133,7 @@ def list_models(base_url: str, api_key: str = "", timeout: int = 5) -> list[str]
         raise LLMError(f"网络不通或地址错误：{e.reason}") from e
     except TimeoutError as e:
         raise LLMError(f"获取模型列表超时（{timeout}s）") from e
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeError) as e:
         raise LLMError("模型列表返回不是合法 JSON") from e
     if isinstance(payload, dict):
         data = payload.get("data") or payload.get("models") or []
@@ -142,7 +142,18 @@ def list_models(base_url: str, api_key: str = "", timeout: int = 5) -> list[str]
     else:
         data = []
     ids = [d.get("id") if isinstance(d, dict) else str(d) for d in data]
-    return [i for i in ids if i]
+    return list(dict.fromkeys(i.strip() for i in ids if isinstance(i, str) and i.strip()))
+
+
+def normalize_base_url(base_url: str) -> str:
+    """用于比较模型端点；忽略首尾空格和末尾斜杠。"""
+    return (base_url or "").strip().rstrip("/")
+
+
+def is_local_endpoint(base_url: str) -> bool:
+    """判断地址是否属于内置扫描的本地模型服务。"""
+    normalized = normalize_base_url(base_url)
+    return any(normalize_base_url(base) == normalized for _name, base in LOCAL_ENDPOINTS)
 
 
 def discover(extra=None, timeout: float = 1.5) -> list[dict]:
@@ -155,18 +166,49 @@ def discover(extra=None, timeout: float = 1.5) -> list[dict]:
     targets = [(name, base, "") for name, base in LOCAL_ENDPOINTS]
     if extra:
         targets += [(s, b, k) for s, b, k in extra if b]
+
+    # 当前填写的地址常与预设/本地端点相同。按 URL 去重，避免同一服务被请求、展示多次；
+    # 若重复项带 Key，则保留 Key 给该端点使用。
+    unique: list[tuple[str, str, str]] = []
+    positions: dict[str, int] = {}
+    for source, base, key in targets:
+        normalized = normalize_base_url(base)
+        if not normalized:
+            continue
+        if normalized in positions:
+            index = positions[normalized]
+            old_source, old_base, old_key = unique[index]
+            unique[index] = (old_source, old_base, old_key or key)
+            continue
+        positions[normalized] = len(unique)
+        unique.append((source, normalized, key))
+
     out: list[dict] = []
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(list_models, b, k, timeout): (s, b, k) for s, b, k in targets}
+        futs = {
+            ex.submit(list_models, base, key, timeout): (index, source, base, key)
+            for index, (source, base, key) in enumerate(unique)
+        }
         for fut in as_completed(futs):
-            src, base, key = futs[fut]
+            index, source, base, key = futs[fut]
             try:
                 models = fut.result()
-            except LLMError:
+            except Exception:  # 一个异常端点不能吞掉其他端点的发现结果
                 continue
             if models:
-                out.append({"source": src, "base_url": base, "api_key": key, "models": models})
-    out.sort(key=lambda e: e["source"])
+                out.append(
+                    {
+                        "source": source,
+                        "base_url": base,
+                        "api_key": key,
+                        "models": models,
+                        "local": is_local_endpoint(base),
+                        "_order": index,
+                    }
+                )
+    out.sort(key=lambda entry: entry["_order"])
+    for entry in out:
+        entry.pop("_order", None)
     return out
 
 

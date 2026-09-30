@@ -195,6 +195,32 @@ def test_discover_finds_mock_server(server):
     assert entry["base_url"] == server
 
 
+def test_discover_deduplicates_same_endpoint(server, monkeypatch):
+    _Handler.mode = "models"
+    monkeypatch.setattr(llm, "LOCAL_ENDPOINTS", [])
+    found = llm.discover(
+        extra=[("First", server + "/", ""), ("Duplicate", server, "sk-test")], timeout=1.5
+    )
+    assert len(found) == 1
+    assert found[0]["source"] == "First"
+    assert found[0]["api_key"] == "sk-test"
+
+
+def test_discover_keeps_good_result_when_another_endpoint_is_invalid(server, monkeypatch):
+    _Handler.mode = "models"
+    monkeypatch.setattr(llm, "LOCAL_ENDPOINTS", [])
+    found = llm.discover(
+        extra=[("Invalid", "not a url", ""), ("Mock", server, "sk-test")], timeout=1.5
+    )
+    assert [entry["source"] for entry in found] == ["Mock"]
+
+
+def test_local_endpoint_normalization(monkeypatch):
+    monkeypatch.setattr(llm, "LOCAL_ENDPOINTS", [("Local", "http://127.0.0.1:9999/v1")])
+    assert llm.is_local_endpoint(" http://127.0.0.1:9999/v1/ ") is True
+    assert llm.is_local_endpoint("https://example.com/v1") is False
+
+
 def test_discover_empty_when_nothing():
     found = llm.discover(extra=[], timeout=0.5)
     # 真机上若恰好有本地服务则非空，只断言结构
