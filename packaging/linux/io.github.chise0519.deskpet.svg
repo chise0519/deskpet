@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5b8fd4"/>
+      <stop offset="1" stop-color="#2b548f"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <ellipse cx="64" cy="108" rx="33" ry="8" fill="#172139" opacity=".35"/>
+  <ellipse cx="47" cy="103" rx="13" ry="6" fill="#f09632"/>
+  <ellipse cx="81" cy="103" rx="13" ry="6" fill="#f09632"/>
+  <rect x="32" y="24" width="64" height="82" rx="31" fill="#262a38"/>
+  <ellipse cx="31" cy="65" rx="9" ry="22" fill="#1e212d"/>
+  <ellipse cx="97" cy="65" rx="9" ry="22" fill="#1e212d"/>
+  <rect x="43" y="50" width="42" height="52" rx="21" fill="#f5f6fa"/>
+  <ellipse cx="51" cy="45" rx="9" ry="11" fill="#fafafc"/>
+  <ellipse cx="77" cy="45" rx="9" ry="11" fill="#fafafc"/>
+  <ellipse cx="53" cy="47" rx="4" ry="5" fill="#191c26"/>
+  <ellipse cx="75" cy="47" rx="4" ry="5" fill="#191c26"/>
+  <path d="M53 59 Q64 73 75 59 Q64 65 53 59Z" fill="#f5a642"/>
+  <ellipse cx="41" cy="62" rx="7" ry="4" fill="#ff96a0" opacity=".7"/>
+  <ellipse cx="87" cy="62" rx="7" ry="4" fill="#ff96a0" opacity=".7"/>
+</svg>

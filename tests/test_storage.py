@@ -82,6 +82,15 @@ def test_mark_notified_repeat_advances(db):
     assert r["due_at"] == "2026-09-10T10:00:00"
 
 
+def test_snooze_is_cleared_after_trigger(db):
+    rid = storage.add_reminder("喝水", "2026-09-10T10:00:00", repeat="daily")
+    storage.update_reminder(rid, snoozed_until="2026-09-09T10:05:00")
+    storage.mark_notified(rid, "2026-09-09T10:05:01", "2026-09-10T10:00:00")
+    r = storage.list_reminders()[0]
+    assert r["snoozed_until"] is None
+    assert r["due_at"] == "2026-09-10T10:00:00"
+
+
 def test_reminders_notified_on(db):
     rid = storage.add_reminder("复盘", "2026-09-09T17:00:00")
     storage.mark_notified(rid, "2026-09-09T17:00:02", None)

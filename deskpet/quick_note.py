@@ -1,15 +1,24 @@
 """速记面板：多行输入（回车保存/Shift+回车换行），列表可勾选完成、
 右键编辑或删除。"""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QCursor, QFont
+from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import (
-    QCheckBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QMenu, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from . import storage
+from . import display, storage
 
 PANEL_CSS = """
 #notePanel {
@@ -54,7 +63,7 @@ QMenu::item:selected { background: #3a5a86; }
 class NoteRow(QWidget):
     toggled = Signal(int, bool)
     removed = Signal(int)
-    edit_requested = Signal(int, str)   # (id, 当前内容) → 回填到上方编辑框
+    edit_requested = Signal(int, str)  # (id, 当前内容) → 回填到上方编辑框
 
     def __init__(self, note: dict, parent=None):
         super().__init__(parent)
@@ -80,8 +89,7 @@ class NoteRow(QWidget):
     def contextMenuEvent(self, ev):
         menu = QMenu(self)
         act_edit = QAction("编辑这条", menu)
-        act_edit.triggered.connect(
-            lambda: self.edit_requested.emit(self.note_id, self._content))
+        act_edit.triggered.connect(lambda: self.edit_requested.emit(self.note_id, self._content))
         menu.addAction(act_edit)
         act = QAction("删除这条", menu)
         act.triggered.connect(lambda: self.removed.emit(self.note_id))
@@ -98,9 +106,7 @@ class QuickNotePanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("notePanel")
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-        )
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setStyleSheet(PANEL_CSS)
         self.setFixedWidth(340)
@@ -158,7 +164,8 @@ class QuickNotePanel(QWidget):
                 self._cancel_edit()
                 return True
             if ev.key() in (Qt.Key_Return, Qt.Key_Enter) and not (
-                    ev.modifiers() & Qt.ShiftModifier):
+                ev.modifiers() & Qt.ShiftModifier
+            ):
                 self._save()
                 return True
         return super().eventFilter(obj, ev)
@@ -230,13 +237,17 @@ class QuickNotePanel(QWidget):
         """在企鹅左侧弹出；屏幕放不下则换到右侧。"""
         self.reload()
         self.adjustSize()
-        screen = self.screen() or self.windowHandle().screen()
+        screen = display.screen_at(global_pos)
         geo = screen.availableGeometry()
         x = global_pos.x() - self.width() - 10
         if x < geo.left():
             x = global_pos.x() + 90
         y = max(geo.top(), min(global_pos.y() - 40, geo.bottom() - self.height()))
-        self.move(min(x, geo.right() - self.width()), y)
+        self.move(
+            display.clamp_top_left(
+                type(global_pos)(min(x, geo.right() - self.width() + 1), y), self.size(), screen
+            )
+        )
         self.show()
         self.edit.setFocus()
 

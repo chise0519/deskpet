@@ -1,13 +1,18 @@
 """提醒到点弹窗：宠物旁边的小卡片，可完成 / 稍后5分钟 / 忽略。"""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from . import config
+from . import config, display, fonts
 
 CSS = """
 #alertCard {
@@ -31,16 +36,14 @@ QPushButton#ignore:hover { background: #5c5c68; }
 
 
 class AlertCard(QWidget):
-    done = Signal(int)     # reminder_id → 记完成（并勾掉同名速记可选）
-    snooze = Signal(int)   # reminder_id → 推迟 5 分钟
-    ignore = Signal(int)   # reminder_id → 本周期忽略
+    done = Signal(int)  # reminder_id → 记完成（并勾掉同名速记可选）
+    snooze = Signal(int)  # reminder_id → 推迟 5 分钟
+    ignore = Signal(int)  # reminder_id → 本周期忽略
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("alertCard")
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-        )
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setStyleSheet(CSS)
         self.setFixedWidth(280)
@@ -54,6 +57,7 @@ class AlertCard(QWidget):
         t.setObjectName("title")
         bell = QLabel()
         from .icons import icon as ui_icon
+
         bell.setPixmap(ui_icon("bell", 16).pixmap(16, 16))
         row0 = QHBoxLayout()
         row0.setSpacing(6)
@@ -65,7 +69,7 @@ class AlertCard(QWidget):
         self.body = QLabel("")
         self.body.setObjectName("body")
         self.body.setWordWrap(True)
-        f = QFont("Microsoft YaHei UI", 11)
+        f = fonts.general(11)
         self.body.setFont(f)
         root.addWidget(self.body)
 
@@ -98,13 +102,13 @@ class AlertCard(QWidget):
         self.body.setText(rem["content"])
         self.when.setText(when_text)
         self.adjustSize()
-        geo = self.screen().availableGeometry() if self.screen() else None
+        screen = display.screen_at(anchor_point)
+        geo = screen.availableGeometry()
         x = anchor_point.x() - self.width() // 2
         y = anchor_point.y() - self.height() - 12
-        if geo:
-            x = max(geo.left(), min(x, geo.right() - self.width()))
-            y = max(geo.top(), y)
-        self.move(x, y)
+        x = max(geo.left(), min(x, geo.right() - self.width() + 1))
+        y = max(geo.top(), y)
+        self.move(display.clamp_top_left(type(anchor_point)(x, y), self.size(), screen))
         self.show()
         self.raise_()
         if config.load_config().get("beep_on", True):

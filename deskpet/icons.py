@@ -2,22 +2,29 @@
 
 用法: from .icons import icon;  menu.addAction(icon("note"), "速记", ...)
 """
+
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
-    QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap,
+    QBrush,
+    QColor,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
 )
 
 _CACHE: dict = {}
 
 COLORS = {
-    "note": "#8ab4f8",   # 速记：笔
-    "bell": "#f2c14e",   # 提醒：铃
-    "doc": "#7ee0a3",    # 日报：文档
-    "quit": "#e06c75",   # 退出：电源
-    "eye": "#b39ddb",    # 显示/隐藏：眼睛
-    "gear": "#9fb3c8",   # 设置：齿轮
+    "note": "#8ab4f8",  # 速记：笔
+    "bell": "#f2c14e",  # 提醒：铃
+    "doc": "#7ee0a3",  # 日报：文档
+    "quit": "#e06c75",  # 退出：电源
+    "eye": "#b39ddb",  # 显示/隐藏：眼睛
+    "gear": "#9fb3c8",  # 设置：齿轮
     "spark": "#c792ea",  # 润色：星光
 }
 
@@ -54,7 +61,7 @@ def _draw_bell(p, c):
     _pen(p, c)
     path = QPainterPath()
     path.moveTo(36, 16)
-    path.arcTo(12, 4, 24, 24, 0, 180)      # 顶部圆拱
+    path.arcTo(12, 4, 24, 24, 0, 180)  # 顶部圆拱
     path.cubicTo(12, 26, 9, 31, 6, 34)
     path.lineTo(42, 34)
     path.cubicTo(39, 31, 36, 26, 36, 16)
@@ -264,8 +271,7 @@ def icon(name: str, size: int = 18) -> QIcon:
     pm, p = _canvas()
     _DRAWERS[name](p, COLORS.get(name, "#c9d1e0"))
     p.end()
-    big = pm.scaled(size * 2, size * 2, Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation)
+    big = pm.scaled(size * 2, size * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation)
     ic = QIcon(big)
     _CACHE[key] = ic
     return ic

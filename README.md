@@ -1,103 +1,145 @@
 # DeskPet 🐧 桌面悬浮企鹅 · 工作速记助手
 
-一个 Windows 桌面悬浮小挂件：
+DeskPet 是一个支持 Ubuntu 与 Windows 的 PySide6 桌面挂件：
 
-- **没碰它时** = 半透明悬浮时钟（HH:MM 大字 + 秒 + 日期）
-- **鼠标放上去** = 变成一只会呼吸、眨眼、瞳孔跟鼠标转的小企鹅
-- **点它** = 跳跃挥手 + 头顶冒气泡语录（类 QQ 宠物互动）
-- **拖它** = 拎起来换位置（记住位置，重启还在）
-- **双击它** = 速记面板，随手记工作事项
-- **右键它** = 菜单：速记 / 提醒 / 写日报 / 设置 / 退出
-- **提醒到点** = 企鹅举牌 + 弹窗卡片 + 系统通知，可完成 / 推迟5分钟 / 忽略
-- **写日报** = 一键把当天速记+提醒汇总成 Markdown，保存为 `reports/YYYY-MM-DD.md`
-- **一键润色** = 调 LLM（Qwen / GLM / 任意 OpenAI 兼容端点含本地 Ollama）润色日报，
-  默认另存 `YYYY-MM-DD.polished.md` 保留原文，可在设置里改成覆盖
+- 无交互时显示半透明时钟；鼠标悬停时变成会呼吸、眨眼的企鹅；
+- 单击互动、拖动换位置、双击打开速记；
+- 支持一次、每天和工作日提醒，完成、忽略或临时延后 5 分钟；
+- 将当天速记和提醒整理成 Markdown 日报；
+- 可调用 Qwen、GLM 或 OpenAI 兼容端点润色日报。
 
-## 运行
+## Ubuntu 22.04+
 
-```bat
-双击 run.bat
-```
-
-或命令行：
+最简单的安装方式是从 [Releases](https://github.com/chise0519/deskpet/releases) 下载对应架构的 `.deb`，然后运行：
 
 ```bash
-.venv\Scripts\python.exe run_deskpet.py        # 带控制台（调试）
-.venv\Scripts\pythonw.exe run_deskpet.py       # 无控制台
+sudo apt install ./deskpet_1.2.0_amd64.deb
 ```
 
-首次安装依赖：
+安装后可在应用菜单搜索 **DeskPet**。卸载时运行：
 
 ```bash
-py -3.14 -m venv .venv
-.venv\Scripts\pip install PySide6 pytest
+sudo apt remove deskpet
 ```
 
-## 数据位置
+用户配置和数据不会随软件包卸载而删除；如确定不再使用，可手动删除 `~/.config/deskpet` 和 `~/.local/share/deskpet`。
 
-- 数据库：`%APPDATA%\DeskPet\deskpet.db`
-- 日报：`%APPDATA%\DeskPet\reports\*.md`
-- 窗口位置等：`%APPDATA%\DeskPet\config.json`
+### 从源码安装
 
-## 设置（右键企鹅 → 设置）
-
-- 日报存放目录（浏览/打开/留空回默认）
-- 时钟：显示秒 / 显示日期星期 / 12小时制
-- 互动与提醒：气泡语录开关、beep 提示音、系统通知开关、轮询间隔
-- AI 润色：服务商（Qwen DashScope / GLM 智谱 / 自定义 OpenAI 兼容）、Base URL、
-  模型（可下拉选择也可手输）、API Key（密码框，仅存本机）、超时、润色后另存或覆盖；
-  每个服务商各自记住一套 Base URL/模型/Key（切换不串），老版本单套配置自动迁移；
-  "自动发现"并发扫描本地 Ollama / llama-server / LM Studio / vLLM 及已填端点，
-  拉取 /models 列表自动填入；切换服务商或填完 Key 也会自动刷新模型列表；
-  环境变量 DASHSCOPE_API_KEY / ZHIPUAI_API_KEY / OPENAI_API_KEY 有值时自动带入；
-  "测试连接"按钮用当前填写值发自检请求，成功显示耗时与模型回复，失败给具体原因
-- 润色技能：设置 → AI 润色 → 润色技能。技能是带 frontmatter 的 .md 指令文件
-  （name/description + 正文），存放在 `%APPDATA%\DeskPet\skills\`；
-  点"添加…"选 .md 入库并选中，"删除"移除；选中后其正文作为润色的 system prompt
-  （自动附加"不编造事实"基础约束），选"内置润色提示"则用默认提示词。
-  后续新增技能：丢 .md 进目录或设置里添加即可
-- 系统：开机自启、重置企鹅位置
-
-所有设置改完即存到 `%APPDATA%\DeskPet\config.json`。
-
-## 托盘
-
-右下角托盘有小企鹅图标：
-- 单击 = 速记面板
-- 双击 = 日报窗口
-- 右键 = 菜单（含"开机自启"开关）
-
-## 测试
+推荐在 X11 会话运行。安装脚本会创建项目虚拟环境、安装 Python 依赖，并添加应用菜单入口：
 
 ```bash
-.venv\Scripts\python.exe -m pytest tests/ -v      # 逻辑层 17 个单测
-.venv\Scripts\python.exe tests\smoke_offscreen.py # 离屏渲染冒烟
-.venv\Scripts\python.exe tests\e2e_desktop.py     # 真桌面 E2E（约10秒，屏幕会闪窗口）
+chmod +x install-ubuntu.sh run.sh
+./install-ubuntu.sh
 ```
 
-## 结构
+脚本需要安装以下 Ubuntu 组件，执行时可能要求管理员密码：
 
+```bash
+sudo apt install python3-venv libxcb-cursor0
 ```
+
+安装后可在应用菜单搜索 **DeskPet**，也可运行：
+
+```bash
+./run.sh
+```
+
+Ubuntu 开机自启使用 XDG Autostart，设置文件位于：
+
+```text
+~/.config/autostart/io.github.chise0519.deskpet.desktop
+```
+
+### Ubuntu 数据目录
+
+- 配置：`${XDG_CONFIG_HOME:-~/.config}/deskpet/config.json`
+- 数据库：`${XDG_DATA_HOME:-~/.local/share}/deskpet/deskpet.db`
+- 日报：`${XDG_DATA_HOME:-~/.local/share}/deskpet/reports/`
+- 技能：`${XDG_DATA_HOME:-~/.local/share}/deskpet/skills/`
+
+从旧版 `~/.deskpet/DeskPet/` 启动时会自动复制迁移数据，旧目录会保留以便回滚。配置目录权限为 `0700`，含 API Key 的配置文件和数据库权限为 `0600`。
+
+## Windows
+
+首次安装：
+
+```powershell
+py -3.10 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e .
+```
+
+之后双击 `run.bat`，或运行：
+
+```powershell
+.venv\Scripts\python.exe run_deskpet.py
+```
+
+Windows 数据仍保存在 `%APPDATA%\DeskPet\`，开机自启使用当前用户的注册表 Run 项。
+
+## 功能与设置
+
+- 日报存放目录：浏览选择或直接输入路径；
+- 时钟：显示秒、日期星期、12 小时制；
+- 互动与提醒：气泡、提示音、系统通知、轮询间隔；
+- AI 润色：Qwen、GLM、自定义 OpenAI 兼容服务、本地 Ollama/vLLM；
+- 润色技能：带 frontmatter 的 Markdown 指令文件；
+- 系统：开机自启、重置企鹅位置。
+
+双显示器环境会记录显示器名称和屏内相对位置；交换屏幕、调整主屏或临时拔掉显示器时，窗口会回到可见区域。
+
+## 开发与测试
+
+Ubuntu/macOS：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python -m pytest -v
+QT_QPA_PLATFORM=offscreen .venv/bin/python tests/smoke_offscreen.py
+.venv/bin/python tests/e2e_desktop.py
+.venv/bin/ruff check deskpet tests
+```
+
+Windows 请把 `.venv/bin/python` 换成 `.venv\Scripts\python.exe`。
+
+### 构建 Ubuntu `.deb`
+
+构建脚本会用 PyInstaller 打包独立可执行程序，不要求目标电脑预装 Python 或 PySide6：
+
+```bash
+sudo apt install python3-venv libxcb-cursor0 libxkbcommon-x11-0
+python3 -m venv .venv
+.venv/bin/python -m pip install -e . pyinstaller
+bash packaging/debian/build-deb.sh
+```
+
+安装包输出到 `dist/deskpet_<版本>_<架构>.deb`。推送 `v*` 标签时，GitHub Actions 会自动构建并上传到 GitHub Release。
+
+## 项目结构
+
+```text
 deskpet/
-├── config.py          路径/常量/语录
-├── storage.py         SQLite CRUD（notes/reminders）
-├── scheduler.py       提醒到期/重复推进（纯逻辑）
-├── report.py          日报 Markdown 生成（纯逻辑）
-├── autostart.py       开机自启（HKCU Run 注册表）
-├── pet_widget.py      核心：时钟↔企鹅状态机、QPainter 绘制、气泡
+├── config.py          XDG/Windows 数据路径、安全配置写入与迁移
+├── display.py         多显示器选择、恢复与窗口夹取
+├── autostart.py       Windows 注册表 / Linux XDG 开机自启
+├── storage.py         SQLite CRUD
+├── scheduler.py       提醒到期、重复推进和临时延后
+├── report.py          日报 Markdown 生成
+├── pet_widget.py      时钟与企鹅动画
 ├── quick_note.py      速记面板
 ├── reminder_dialog.py 提醒管理面板
-├── alert_card.py      到点弹窗卡片
-├── report_window.py   日报编辑/保存窗口
-└── main.py            入口：单实例/托盘/轮询调度
+├── alert_card.py      到点提醒卡片
+├── report_window.py   日报编辑与保存
+├── settings_window.py 设置窗口
+└── main.py            单实例、托盘与应用组装
 ```
 
-企鹅是 QPainter 纯代码逐帧绘制的（无图片素材依赖），想要更精致的形象可换
-[DyberPet](https://github.com/ChaozhongLiu/DyberPet)（GPL-3.0，同为 PySide6）的序列帧素材做皮肤。
+企鹅和图标均由 QPainter/SVG 绘制，不依赖外部图片素材。
 
-## 打包 exe（可选）
+## Windows 打包（可选）
 
-```bash
-.venv\Scripts\pip install pyinstaller
+```powershell
+.venv\Scripts\python.exe -m pip install pyinstaller
 .venv\Scripts\pyinstaller --noconsole --onefile --name DeskPet run_deskpet.py
 ```

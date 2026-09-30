@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=DeskPet
+Name[zh_CN]=DeskPet 桌面企鹅
+Comment=Desktop pet, quick notes and reminders
+Comment[zh_CN]=桌面企鹅、速记与提醒助手
+Exec=@EXEC@
+Icon=@ICON@
+Terminal=false
+Categories=Utility;Office;
+StartupNotify=false
+StartupWMClass=DeskPet

@@ -1,4 +1,5 @@
 """skills 模块单测：解析/列表/增删 + 润色时技能进 system prompt。"""
+
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -77,13 +78,11 @@ class _Echo(BaseHTTPRequestHandler):
         pass
 
     def do_POST(self):
-        _Echo.body = json.loads(
-            self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        _Echo.body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps(
-            {"choices": [{"message": {"content": "OK"}}]}).encode())
+        self.wfile.write(json.dumps({"choices": [{"message": {"content": "OK"}}]}).encode())
 
 
 @pytest.fixture(scope="module")
@@ -100,8 +99,7 @@ def test_polish_sends_skill_as_system(server, sdir):
     skills.add_skill(src)
     cfg = {
         "llm_provider": "custom",
-        "llm_profiles": {"custom": {"base_url": server, "model": "m",
-                                    "api_key": "k"}},
+        "llm_profiles": {"custom": {"base_url": server, "model": "m", "api_key": "k"}},
         "polish_skill": "daily-report",
         "llm_timeout": 5,
     }
@@ -116,8 +114,7 @@ def test_polish_sends_skill_as_system(server, sdir):
 def test_polish_unknown_skill_falls_back(server):
     cfg = {
         "llm_provider": "custom",
-        "llm_profiles": {"custom": {"base_url": server, "model": "m",
-                                    "api_key": "k"}},
+        "llm_profiles": {"custom": {"base_url": server, "model": "m", "api_key": "k"}},
         "polish_skill": "no-such-skill",
         "llm_timeout": 5,
     }

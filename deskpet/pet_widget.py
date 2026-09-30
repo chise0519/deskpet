@@ -6,6 +6,7 @@
 
 企鹅为 QPainter 逐帧绘制，不依赖图片素材；后期可换 GIF/序列帧。
 """
+
 from __future__ import annotations
 
 import math
@@ -13,18 +14,28 @@ import random
 from datetime import datetime
 
 from PySide6.QtCore import (
-    QPointF, QRectF, Qt, QTimer, Signal,
+    QPointF,
+    QRectF,
+    Qt,
+    QTimer,
+    Signal,
 )
 from PySide6.QtGui import (
-    QBrush, QColor, QCursor, QFont, QPainter, QPainterPath, QPen,
+    QBrush,
+    QColor,
+    QCursor,
+    QFont,
+    QPainter,
+    QPainterPath,
+    QPen,
 )
 from PySide6.QtWidgets import QMenu, QWidget
 
-from . import config
+from . import config, display, fonts
 
-W, H = 140, 150          # 窗口尺寸
-FPS = 25                 # 宠物动画帧率
-LEAVE_DELAY_MS = 400     # 鼠标移开后回时钟的防抖
+W, H = 140, 150  # 窗口尺寸
+FPS = 25  # 宠物动画帧率
+LEAVE_DELAY_MS = 400  # 鼠标移开后回时钟的防抖
 
 CLOCK_BG = QColor(24, 26, 33, 190)
 CLOCK_BORDER = QColor(70, 78, 96, 200)
@@ -44,9 +55,7 @@ class Bubble(QWidget):
 
     def __init__(self):
         super().__init__(None)
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-        )
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self._text = ""
@@ -60,7 +69,8 @@ class Bubble(QWidget):
         self.setFixedSize(fm_w, 52)
         x = int(anchor.x() - self.width() / 2)
         y = int(anchor.y() - self.height() - 6)
-        self.move(x, y)
+        screen = display.screen_at(anchor)
+        self.move(display.clamp_top_left(QPointF(x, y), self.size(), screen))
         self.show()
         self.raise_()
         self._timer.start(ms)
@@ -83,38 +93,37 @@ class Bubble(QWidget):
         p.setBrush(QColor(32, 35, 44, 240))
         p.drawPath(path.simplified())
         p.setPen(QColor(235, 240, 248))
-        f = QFont("Microsoft YaHei UI", 10)
+        f = fonts.general(10)
         p.setFont(f)
         p.drawText(r, Qt.AlignCenter, self._text)
 
 
 class PetWidget(QWidget):
     # 供 main.py 连接的信号
-    request_note = Signal()      # 双击 → 速记
+    request_note = Signal()  # 双击 → 速记
     request_reminder = Signal()  # 菜单 → 提醒
-    request_report = Signal()    # 菜单 → 日报
+    request_report = Signal()  # 菜单 → 日报
     request_settings = Signal()  # 菜单 → 设置
     request_quit = Signal()
 
     def __init__(self):
         super().__init__(None)
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-        )
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(W, H)
         self.setWindowTitle("DeskPet")
 
         # ---- 状态 ----
-        self.pet_mode = False          # False=时钟 True=企鹅
-        self.anim = "idle"             # idle/happy/drag/alert
+        self.pet_mode = False  # False=时钟 True=企鹅
+        self.anim = "idle"  # idle/happy/drag/alert
         self.frame = 0
         self._drag_offset = None
         self._press_pos = None
         self._moved = False
         self._alert_text = ""
-        self._happy_until = 0          # frame 计数
-        self._blink_frames = set()     # 随机眨眼帧
+        self._happy_until = 0  # frame 计数
+        self._blink_frames = set()  # 随机眨眼帧
+        self._cfg = config.load_config()
 
         self.bubble = Bubble()
 
@@ -126,7 +135,6 @@ class PetWidget(QWidget):
         self.anim_timer = QTimer(self)
         self.anim_timer.setInterval(1000 // FPS)
         self.anim_timer.timeout.connect(self._on_anim_tick)
-        self.anim_timer.start()
 
         self.leave_timer = QTimer(self)
         self.leave_timer.setSingleShot(True)
@@ -152,26 +160,26 @@ class PetWidget(QWidget):
         p.drawPath(path)
 
         now = datetime.now()
-        cfg = config.load_config()
+        cfg = self._cfg
         hour12 = bool(cfg.get("hour12", False))
         show_sec = bool(cfg.get("show_seconds", True))
         show_date = bool(cfg.get("show_date", True))
         hm = now.strftime("%I:%M" if hour12 else "%H:%M")
         # 大数字 HH:MM（居左）+ 秒（右侧小字），超宽自动缩字号
         big_pt, sec_pt = 30, 15
-        f_big = QFont("Consolas", big_pt, QFont.Bold)
-        f_sec = QFont("Consolas", sec_pt, QFont.Bold)
+        f_big = fonts.fixed(big_pt, QFont.Bold)
+        f_sec = fonts.fixed(sec_pt, QFont.Bold)
         from PySide6.QtGui import QFontMetrics
+
         while big_pt > 20:
             big_w = QFontMetrics(f_big).horizontalAdvance(hm)
-            sec_w = (QFontMetrics(f_sec).horizontalAdvance(":SS")
-                     if show_sec else 0)
+            sec_w = QFontMetrics(f_sec).horizontalAdvance(":SS") if show_sec else 0
             if big_w + sec_w <= board.width() - 14:
                 break
             big_pt -= 2
             sec_pt -= 1
-            f_big = QFont("Consolas", big_pt, QFont.Bold)
-            f_sec = QFont("Consolas", sec_pt, QFont.Bold)
+            f_big = fonts.fixed(big_pt, QFont.Bold)
+            f_sec = fonts.fixed(sec_pt, QFont.Bold)
         p.setFont(f_big)
         left = board.center().x() - (big_w + sec_w) / 2
         p.setPen(CLOCK_FG)
@@ -179,17 +187,18 @@ class PetWidget(QWidget):
         if show_sec:
             p.setFont(f_sec)
             p.setPen(CLOCK_SEC)
-            p.drawText(QPointF(left + big_w + 2, board.top() + 52),
-                       now.strftime(":%S"))
+            p.drawText(QPointF(left + big_w + 2, board.top() + 52), now.strftime(":%S"))
         # 日期 + 星期
         if show_date:
             wk = "一二三四五六日"[now.weekday()]
-            f3 = QFont("Microsoft YaHei UI", 9)
+            f3 = fonts.general(9)
             p.setFont(f3)
             p.setPen(CLOCK_DATE)
             p.drawText(
                 QRectF(board.left(), board.bottom() - 26, board.width(), 18),
-                Qt.AlignCenter, now.strftime(f"%m月%d日 周{wk}"))
+                Qt.AlignCenter,
+                now.strftime(f"%m月%d日 周{wk}"),
+            )
         # 呼吸小圆点（活着的感觉）
         alpha = int(90 + 90 * math.sin(now.timestamp() * 2))
         p.setPen(Qt.NoPen)
@@ -236,7 +245,7 @@ class PetWidget(QWidget):
             wing_l, wing_r = -18, 18
         elif self.anim == "alert":
             bob = math.sin(f * 0.45) * 2
-            wing_r = -75 + math.sin(f * 0.5) * 8   # 右翅举牌
+            wing_r = -75 + math.sin(f * 0.5) * 8  # 右翅举牌
 
         cx = W / 2
         base_y = H - 22 + bob + jump
@@ -340,7 +349,7 @@ class PetWidget(QWidget):
         p.setBrush(QColor(250, 240, 235))
         p.drawRoundedRect(r, 6, 6)
         p.setPen(QColor(200, 70, 60))
-        p.setFont(QFont("Microsoft YaHei UI", 12, QFont.Bold))
+        p.setFont(fonts.general(12, QFont.Bold))
         p.drawText(r, Qt.AlignCenter, "❗")
         p.restore()
 
@@ -348,6 +357,8 @@ class PetWidget(QWidget):
 
     def enterEvent(self, ev):
         self.leave_timer.stop()
+        if not self.anim_timer.isActive():
+            self.anim_timer.start()
         if not self.pet_mode and self.anim != "alert":
             self.pet_mode = True
             self.anim = "idle"
@@ -363,6 +374,7 @@ class PetWidget(QWidget):
         if self.anim != "alert" and self._drag_offset is None:
             self.pet_mode = False
             self.anim = "idle"
+            self.anim_timer.stop()
             self.update()
 
     def mousePressEvent(self, ev):
@@ -402,10 +414,12 @@ class PetWidget(QWidget):
     def _react(self):
         self.pet_mode = True
         self.anim = "happy"
+        if not self.anim_timer.isActive():
+            self.anim_timer.start()
         self._happy_until = self.frame + 14
         self.update()
         anchor = self.mapToGlobal(QPointF(W / 2, 14))
-        if config.load_config().get("bubble_on", True):
+        if self._cfg.get("bubble_on", True):
             self.bubble.say(random.choice(config.QUOTES), anchor)
 
     def _show_menu(self, pos):
@@ -435,6 +449,8 @@ class PetWidget(QWidget):
         self._alert_text = text
         self.pet_mode = True
         self.anim = "alert"
+        if not self.anim_timer.isActive():
+            self.anim_timer.start()
         self.leave_timer.stop()
         self.update()
         anchor = self.mapToGlobal(QPointF(W / 2, 14))
@@ -457,20 +473,22 @@ class PetWidget(QWidget):
         cfg = config.load_config()
         cfg["pos_x"] = self.x()
         cfg["pos_y"] = self.y()
+        center = self.frameGeometry().center()
+        screen = display.screen_at(center)
+        rel_x, rel_y = display.relative_position(self.pos(), self.size(), screen)
+        cfg["screen_name"] = screen.name()
+        cfg["pos_rel_x"] = rel_x
+        cfg["pos_rel_y"] = rel_y
         config.save_config(cfg)
 
     def _restore_pos(self):
         cfg = config.load_config()
-        screen = self.screen()
-        geo = screen.availableGeometry() if screen else QRectF(0, 0, 1920, 1080)
-        x, y = cfg.get("pos_x"), cfg.get("pos_y")
-        if x is None or y is None:
-            x = geo.right() - W - 60
-            y = geo.bottom() - H - 30
-        # 夹回屏幕内（防止拔显示器后丢窗外）
-        x = max(geo.left(), min(x, geo.right() - W))
-        y = max(geo.top(), min(y, geo.bottom() - H))
-        self.move(int(x), int(y))
+        point, _screen = display.restore_top_left(cfg, self.size())
+        self.move(point)
+
+    def reload_config(self):
+        self._cfg = config.load_config()
+        self.update()
 
     def paintEvent(self, _ev):
         p = QPainter(self)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """DeskPet 启动脚本（供 run.bat / 开机自启调用）。"""
+
 import sys
 from pathlib import Path
 

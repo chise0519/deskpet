@@ -3,8 +3,10 @@
 单连接 + RLock，GUI 线程直接调用；测试可 use_conn() 注入临时库。
 时间一律存 ISO8601 本地时间字符串（秒精度）。
 """
+
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 from datetime import datetime
@@ -44,21 +46,30 @@ def init_db(conn: sqlite3.Connection) -> None:
               repeat TEXT NOT NULL DEFAULT 'once',
               notified INTEGER NOT NULL DEFAULT 0,
               last_notified_at TEXT,
+              snoozed_until TEXT,
               enabled INTEGER NOT NULL DEFAULT 1
             );
             """
         )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(reminders)")}
+        if "snoozed_until" not in columns:
+            conn.execute("ALTER TABLE reminders ADD COLUMN snoozed_until TEXT")
 
 
 def get_conn(db_file=None) -> sqlite3.Connection:
     global _conn
     with _lock:
         if _conn is None:
-            _conn = sqlite3.connect(
-                str(db_file or config.db_path()), check_same_thread=False
-            )
+            path = db_file or config.db_path()
+            _conn = sqlite3.connect(str(path), check_same_thread=False)
             _conn.row_factory = sqlite3.Row
+            _conn.execute("PRAGMA busy_timeout=5000")
             init_db(_conn)
+            if db_file is None and os.name != "nt":
+                try:
+                    config.db_path().chmod(0o600)
+                except OSError:
+                    pass
         return _conn
 
 
@@ -84,6 +95,7 @@ def _exec(sql: str, args: Iterable = ()) -> int:
 
 
 # ---------------- notes ----------------
+
 
 def add_note(content: str, created_at: When = None) -> int:
     return _exec(
@@ -133,6 +145,7 @@ def update_note(note_id: int, content: str) -> dict:
 
 # ---------------- reminders ----------------
 
+
 def add_reminder(content: str, due_at: When, repeat: str = "once") -> int:
     return _exec(
         "INSERT INTO reminders(content, due_at, repeat) VALUES(?,?,?)",
@@ -144,7 +157,15 @@ def list_reminders() -> list[dict]:
     return _rows("SELECT * FROM reminders ORDER BY due_at, id")
 
 
-_ALLOWED = {"content", "due_at", "repeat", "enabled", "notified", "last_notified_at"}
+_ALLOWED = {
+    "content",
+    "due_at",
+    "repeat",
+    "enabled",
+    "notified",
+    "last_notified_at",
+    "snoozed_until",
+}
 
 
 def update_reminder(reminder_id: int, **fields) -> None:
@@ -173,12 +194,14 @@ def mark_notified(reminder_id: int, when: When, next_due_at: When = None) -> Non
     when_s = _norm(when) or now_iso()
     if next_due_at is None:
         _exec(
-            "UPDATE reminders SET notified=1, last_notified_at=?, enabled=0 WHERE id=?",
+            "UPDATE reminders SET notified=1, last_notified_at=?, "
+            "snoozed_until=NULL, enabled=0 WHERE id=?",
             (when_s, reminder_id),
         )
     else:
         _exec(
-            "UPDATE reminders SET notified=0, due_at=?, last_notified_at=? WHERE id=?",
+            "UPDATE reminders SET notified=0, due_at=?, last_notified_at=?, "
+            "snoozed_until=NULL WHERE id=?",
             (_norm(next_due_at), when_s, reminder_id),
         )
 

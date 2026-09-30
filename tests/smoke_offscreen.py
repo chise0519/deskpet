@@ -1,4 +1,5 @@
 """离屏冒烟测试：渲染各状态截图 + 走一遍核心流程，不依赖真实桌面。"""
+
 import os
 import sys
 from datetime import datetime, timedelta
@@ -8,11 +9,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sqlite3
+
 from PySide6.QtWidgets import QApplication
 
 app = QApplication(sys.argv)
 
-from deskpet import config, report, scheduler, storage
+from deskpet import report, scheduler, storage
 from deskpet.alert_card import AlertCard
 from deskpet.pet_widget import PetWidget
 from deskpet.quick_note import QuickNotePanel
@@ -75,9 +77,17 @@ print(md)
 assert path.exists()
 
 # 7) 面板都能实例化并渲染
-panel = QuickNotePanel(); panel.reload(); panel.grab().save(str(out / "5_note_panel.png"))
-rpanel = ReminderPanel(); rpanel.reload(); rpanel.grab().save(str(out / "6_reminder_panel.png"))
-card = AlertCard(); card.body.setText("15:00 站会"); card.grab().save(str(out / "7_alert_card.png"))
-rwin = ReportWindow(); rwin.generate(); rwin.grab().save(str(out / "8_report_window.png"))
+panel = QuickNotePanel()
+panel.reload()
+panel.grab().save(str(out / "5_note_panel.png"))
+rpanel = ReminderPanel()
+rpanel.reload()
+rpanel.grab().save(str(out / "6_reminder_panel.png"))
+card = AlertCard()
+card.body.setText("15:00 站会")
+card.grab().save(str(out / "7_alert_card.png"))
+rwin = ReportWindow()
+rwin.generate()
+rwin.grab().save(str(out / "8_report_window.png"))
 
 print("SMOKE_OK  截图输出目录:", out)

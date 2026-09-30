@@ -2,36 +2,36 @@
 
 运行: python -m deskpet.main   或双击 run.bat
 """
+
 from __future__ import annotations
 
 import ctypes
 import sys
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QFont
-from PySide6.QtWidgets import (
-    QApplication, QMenu, QMessageBox, QSystemTrayIcon,
-)
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from . import autostart, config, scheduler, storage
 from .alert_card import AlertCard
-from .pet_widget import PetWidget, W, H
+from .pet_widget import PetWidget, W
 from .quick_note import QuickNotePanel
 from .reminder_dialog import ReminderPanel
 from .report_window import ReportWindow
 from .settings_window import SettingsWindow
 
-SINGLE_INSTANCE_KEY = "***"
+SINGLE_INSTANCE_KEY = config.APP_ID
 POLL_MS = 15_000
 
 
 def set_app_user_model_id():
     """声明 AppUserModelID：让任务栏按钮用窗口图标而非 .py 文件关联图标。"""
+    if sys.platform != "win32":
+        return
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "chise.deskpet.app")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("chise.deskpet.app")
     except Exception:  # noqa: BLE001
         pass
 
@@ -67,7 +67,7 @@ class DeskPetApp:
         self.pet.request_report.connect(self.open_report)
         self.pet.request_settings.connect(self.open_settings)
         self.pet.request_quit.connect(self.quit)
-        self.settings_win.changed.connect(self._apply_poll_interval)
+        self.settings_win.changed.connect(self._settings_changed)
         self.alert_card.done.connect(self._alert_done)
         self.alert_card.snooze.connect(self._alert_snooze)
         self.alert_card.ignore.connect(self._alert_ignore)
@@ -105,9 +105,7 @@ class DeskPetApp:
         self.autostart_act = QAction("开机自启", menu)
         self.autostart_act.setCheckable(True)
         self.autostart_act.setChecked(autostart.is_enabled())
-        self.autostart_act.toggled.connect(
-            lambda on: autostart.set_enabled(on)
-        )
+        self.autostart_act.toggled.connect(self._toggle_autostart)
         menu.addAction(self.autostart_act)
         quit_act = QAction("退出", menu)
         quit_act.triggered.connect(self.quit)
@@ -137,6 +135,10 @@ class DeskPetApp:
         sec = int(config.load_config().get("poll_sec", 15))
         self.poll.start(max(5, min(300, sec)) * 1000)
 
+    def _settings_changed(self):
+        self._apply_poll_interval()
+        self.pet.reload_config()
+
     def toggle_pet(self):
         self.pet.setVisible(not self.pet.isVisible())
 
@@ -145,6 +147,19 @@ class DeskPetApp:
             self.open_note()
         elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.open_report()
+
+    def _toggle_autostart(self, on: bool):
+        if autostart.set_enabled(on):
+            return
+        self.autostart_act.blockSignals(True)
+        self.autostart_act.setChecked(not on)
+        self.autostart_act.blockSignals(False)
+        self.tray.showMessage(
+            "DeskPet",
+            "无法更新开机自启设置，请检查目录权限。",
+            QSystemTrayIcon.MessageIcon.Warning,
+            5000,
+        )
 
     # ---------------- 提醒 ----------------
 
@@ -155,22 +170,24 @@ class DeskPetApp:
             return
         r = due[0]  # 一次只弹一条，下一条 15s 后自然再来
         rep = r.get("repeat", "once")
-        nxt = scheduler.next_due(
-            datetime.fromisoformat(r["due_at"]), rep, now
-        )
+        nxt = scheduler.next_after_trigger(r, now)
         storage.mark_notified(r["id"], now, nxt)  # 先落库防重复弹
         self.pet.set_alert(r["content"])
-        due_s = datetime.fromisoformat(r["due_at"]).strftime("%H:%M")
+        due_s = scheduler.effective_due(r).strftime("%H:%M")
         anchor = self.pet.mapToGlobal(self.pet.rect().topLeft())
         anchor.setX(anchor.x() + W // 2)
         rep_cn = {"daily": "每天", "weekdays": "工作日"}.get(rep, "仅一次")
         self.alert_card.popup(
-            r, anchor, when_text=f"计划 {due_s} · {rep_cn}",
+            r,
+            anchor,
+            when_text=f"计划 {due_s} · {rep_cn}",
         )
         if config.load_config().get("sys_notify", True):
             self.tray.showMessage(
-                "⏰ DeskPet 提醒", r["content"],
-                QSystemTrayIcon.MessageIcon.Information, 5000,
+                "⏰ DeskPet 提醒",
+                r["content"],
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
             )
 
     def _alert_done(self, rem_id: int):
@@ -190,8 +207,9 @@ class DeskPetApp:
         if r:
             storage.update_reminder(
                 rem_id,
-                due_at=datetime.now() + timedelta(minutes=5),
-                notified=0, enabled=1,
+                snoozed_until=datetime.now() + timedelta(minutes=5),
+                notified=0,
+                enabled=1,
             )
 
     def _alert_ignore(self, _rem_id: int):
@@ -206,19 +224,18 @@ class DeskPetApp:
             return
         names = []
         for r in missed:
-            nxt = scheduler.next_due(
-                datetime.fromisoformat(r["due_at"]), r.get("repeat", "once"), now
-            )
-            if nxt is not None:
-                storage.mark_notified(r["id"], now, nxt)  # 重复项推进
-            else:
-                names.append(r["content"])  # 一次性过期项
+            nxt = scheduler.next_after_trigger(r, now)
+            storage.mark_notified(r["id"], now, nxt)
+            if nxt is None:
+                names.append(r["content"])
         if names:
             text = "\n".join(f"· {n}" for n in names[:8])
             more = f"\n…等 {len(names)} 条" if len(names) > 8 else ""
             self.tray.showMessage(
-                "⏰ 离线期间错过的提醒", text + more,
-                QSystemTrayIcon.MessageIcon.Warning, 8000,
+                "⏰ 离线期间错过的提醒",
+                text + more,
+                QSystemTrayIcon.MessageIcon.Warning,
+                8000,
             )
 
     # ---------------- 退出 ----------------
@@ -245,6 +262,8 @@ def already_running() -> bool:
 def main() -> int:
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setOrganizationName("chise0519")
+    app.setOrganizationDomain("github.com/chise0519")
 
     if already_running():
         return 0

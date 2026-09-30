@@ -4,6 +4,7 @@
 格式：---\nname: xxx\ndescription: xxx\n---\n正文（给模型的指令）
 后续新增技能：丢一个 .md 进目录，或设置里点"添加…"。
 """
+
 from __future__ import annotations
 
 import re
@@ -30,11 +31,10 @@ def parse_skill(text: str) -> dict:
         for line in fm.splitlines():
             line = line.strip()
             if line.startswith("name:"):
-                name = line[len("name:"):].strip()
+                name = line[len("name:") :].strip()
             elif line.startswith("description:"):
-                desc = line[len("description:"):].strip()
-    return {"name": name or "unnamed", "description": desc,
-            "body": body.strip()}
+                desc = line[len("description:") :].strip()
+    return {"name": name or "unnamed", "description": desc, "body": body.strip()}
 
 
 def list_skills() -> list[dict]:

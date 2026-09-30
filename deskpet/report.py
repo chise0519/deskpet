@@ -1,4 +1,5 @@
 """日报 Markdown 生成与保存（纯逻辑，无 Qt）。"""
+
 from __future__ import annotations
 
 import shutil
@@ -24,8 +25,9 @@ def _hm(iso) -> str:
         return ""
 
 
-def build_report(day: Day, notes: list[dict], reminders: list[dict],
-                 generated_at: datetime = None) -> str:
+def build_report(
+    day: Day, notes: list[dict], reminders: list[dict], generated_at: datetime = None
+) -> str:
     """生成日报 Markdown。
 
     notes: 当天创建的速记（含 done/done_at/created_at）

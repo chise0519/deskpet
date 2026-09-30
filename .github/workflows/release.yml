@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  debian-package:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0
+          python -m pip install -e . pyinstaller
+      - name: Build Debian package
+        env:
+          PYTHON: python
+        run: bash packaging/debian/build-deb.sh
+      - name: Create release and upload package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" --title "DeskPet ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
+          gh release upload "${GITHUB_REF_NAME}" dist/*.deb --clobber

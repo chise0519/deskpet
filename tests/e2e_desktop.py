@@ -1,12 +1,10 @@
 """真桌面 E2E 自检：在真实桌面会话里启动全部组件，逐状态截图后自动退出。
 
 运行（前台，约 9 秒，会在屏幕上短暂出现窗口）:
-    .venv\\Scripts\\python.exe tests\\e2e_desktop.py
+    .venv/bin/python tests/e2e_desktop.py
 """
-import ctypes
+
 import sys
-import time
-from ctypes import wintypes
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -20,7 +18,8 @@ app = QApplication(sys.argv)
 app.setStyle("Fusion")
 
 import sqlite3
-from deskpet import config, report, scheduler, storage
+
+from deskpet import storage
 from deskpet.alert_card import AlertCard
 from deskpet.pet_widget import PetWidget
 from deskpet.quick_note import QuickNotePanel
@@ -68,59 +67,97 @@ def seq():
     pet.show()
     QTimer.singleShot(600, lambda: (shot("1_clock"), None))
     # 2 企鹅 idle
-    QTimer.singleShot(1600, lambda: (setattr(pet, "pet_mode", True),
-                                     setattr(pet, "anim", "idle"),
-                                     pet.update(), shot("2_idle")))
+    QTimer.singleShot(
+        1600,
+        lambda: (
+            setattr(pet, "pet_mode", True),
+            setattr(pet, "anim", "idle"),
+            pet.update(),
+            shot("2_idle"),
+        ),
+    )
     # 3 happy
-    QTimer.singleShot(2600, lambda: (setattr(pet, "anim", "happy"),
-                                     setattr(pet, "_happy_until", pet.frame + 10),
-                                     pet.update(), shot("3_happy")))
+    QTimer.singleShot(
+        2600,
+        lambda: (
+            setattr(pet, "anim", "happy"),
+            setattr(pet, "_happy_until", pet.frame + 10),
+            pet.update(),
+            shot("3_happy"),
+        ),
+    )
     # 4 alert 举牌
     QTimer.singleShot(3600, lambda: (pet.set_alert("E2E 测试提醒"), shot("4_alert")))
     # 5 速记面板
-    QTimer.singleShot(4600, lambda: (note.show_near(pet.mapToGlobal(
-        pet.rect().topLeft())), note.grab().save(str(out / "real_5_note.png")),
-        print("shot: 5_note", flush=True)))
+    QTimer.singleShot(
+        4600,
+        lambda: (
+            note.show_near(pet.mapToGlobal(pet.rect().topLeft())),
+            note.grab().save(str(out / "real_5_note.png")),
+            print("shot: 5_note", flush=True),
+        ),
+    )
     # 6 提醒面板
-    QTimer.singleShot(5800, lambda: (remp.show_near(pet.mapToGlobal(
-        pet.rect().topLeft())), remp.grab().save(str(out / "real_6_reminder.png")),
-        print("shot: 6_reminder", flush=True)))
+    QTimer.singleShot(
+        5800,
+        lambda: (
+            remp.show_near(pet.mapToGlobal(pet.rect().topLeft())),
+            remp.grab().save(str(out / "real_6_reminder.png")),
+            print("shot: 6_reminder", flush=True),
+        ),
+    )
     # 7 提醒卡片
-    QTimer.singleShot(7000, lambda: (card.popup(
-        {"id": 1, "content": "E2E 测试提醒"},
-        pet.mapToGlobal(pet.rect().topLeft())),
-        card.grab().save(str(out / "real_7_card.png")),
-        print("shot: 7_card", flush=True)))
+    QTimer.singleShot(
+        7000,
+        lambda: (
+            card.popup({"id": 1, "content": "E2E 测试提醒"}, pet.mapToGlobal(pet.rect().topLeft())),
+            card.grab().save(str(out / "real_7_card.png")),
+            print("shot: 7_card", flush=True),
+        ),
+    )
     # 8 日报窗口
-    QTimer.singleShot(8200, lambda: (rwin.show_and_generate(),
-        rwin.grab().save(str(out / "real_8_report.png")),
-        print("shot: 8_report", flush=True)))
+    QTimer.singleShot(
+        8200,
+        lambda: (
+            rwin.show_and_generate(),
+            rwin.grab().save(str(out / "real_8_report.png")),
+            print("shot: 8_report", flush=True),
+        ),
+    )
     # 9 设置窗口
-    QTimer.singleShot(9400, lambda: (swin.show_settings(),
-        swin.grab().save(str(out / "real_9_settings.png")),
-        print("shot: 9_settings", flush=True)))
+    QTimer.singleShot(
+        9400,
+        lambda: (
+            swin.show_settings(),
+            swin.grab().save(str(out / "real_9_settings.png")),
+            print("shot: 9_settings", flush=True),
+        ),
+    )
     # 收尾：验证窗口句柄可见 + 退出
     QTimer.singleShot(10700, finish)
 
 
 def finish():
-    user32 = ctypes.windll.user32
-    EnumWindows = user32.EnumWindows
-    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-    found = []
-
-    def cb(hwnd, _):
-        buf = ctypes.create_unicode_buffer(256)
-        user32.GetWindowTextW(hwnd, buf, 256)
-        if buf.value == "DeskPet":
-            r = wintypes.RECT()
-            user32.GetWindowRect(hwnd, ctypes.byref(r))
-            found.append((bool(user32.IsWindowVisible(hwnd)),
-                          (r.left, r.top, r.right, r.bottom)))
-        return True
-
-    EnumWindows(WNDENUMPROC(cb), 0)
-    print("WINDOW ENUM:", found, flush=True)
+    windows = {
+        "pet": pet,
+        "note": note,
+        "reminder": remp,
+        "report": rwin,
+        "alert": card,
+        "settings": swin,
+    }
+    found = {
+        name: {
+            "visible": widget.isVisible(),
+            "geometry": widget.frameGeometry().getRect(),
+            "screen": widget.screen().name() if widget.screen() else "",
+        }
+        for name, widget in windows.items()
+    }
+    assert found["pet"]["visible"]
+    assert found["report"]["visible"]
+    assert found["settings"]["visible"]
+    print("WINDOWS:", found, flush=True)
     print("E2E_OK steps=", steps, flush=True)
     app.quit()
 

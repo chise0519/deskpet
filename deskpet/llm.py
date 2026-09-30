@@ -3,6 +3,7 @@
 纯逻辑层，GUI 只负责接线。网络用标准库 urllib，不引第三方依赖。
 API key 只存本地 config.json，绝不写日志。
 """
+
 from __future__ import annotations
 
 import json
@@ -59,18 +60,26 @@ class LLMError(Exception):
     """配置缺失 / 网络失败 / 模型返回异常，消息可直接展示给用户。"""
 
 
-def chat_complete(base_url: str, api_key: str, model: str,
-                  messages: list[dict], timeout: int = 60,
-                  temperature: float = 0.4) -> str:
+def chat_complete(
+    base_url: str,
+    api_key: str,
+    model: str,
+    messages: list[dict],
+    timeout: int = 60,
+    temperature: float = 0.4,
+) -> str:
     """OpenAI 兼容 /chat/completions 调用，返回助手文本。"""
     url = base_url.rstrip("/") + "/chat/completions"
-    body = json.dumps({
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+    ).encode("utf-8")
     req = urllib.request.Request(
-        url, data=body,
+        url,
+        data=body,
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
@@ -148,8 +157,7 @@ def discover(extra=None, timeout: float = 1.5) -> list[dict]:
         targets += [(s, b, k) for s, b, k in extra if b]
     out: list[dict] = []
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(list_models, b, k, timeout): (s, b, k)
-                for s, b, k in targets}
+        futs = {ex.submit(list_models, b, k, timeout): (s, b, k) for s, b, k in targets}
         for fut in as_completed(futs):
             src, base, key = futs[fut]
             try:
@@ -157,14 +165,12 @@ def discover(extra=None, timeout: float = 1.5) -> list[dict]:
             except LLMError:
                 continue
             if models:
-                out.append({"source": src, "base_url": base,
-                            "api_key": key, "models": models})
+                out.append({"source": src, "base_url": base, "api_key": key, "models": models})
     out.sort(key=lambda e: e["source"])
     return out
 
 
-def test_connection(base_url: str, api_key: str, model: str,
-                    timeout: int = 15) -> tuple[bool, str]:
+def test_connection(base_url: str, api_key: str, model: str, timeout: int = 15) -> tuple[bool, str]:
     """连接自检：发一条最小请求，返回 (是否成功, 可读消息)。
 
     用表单当前值而非已保存配置，改完不用先保存就能测。
@@ -177,15 +183,18 @@ def test_connection(base_url: str, api_key: str, model: str,
         return False, "未填 Base URL"
     if not model:
         return False, "未填模型名"
-    if (not (api_key or "").strip()
-            and "localhost" not in base_url and "127.0.0.1" not in base_url):
+    if not (api_key or "").strip() and "localhost" not in base_url and "127.0.0.1" not in base_url:
         return False, "未填 API Key（本地服务可留空）"
     t0 = _time.monotonic()
     try:
         out = chat_complete(
-            base_url, api_key, model,
+            base_url,
+            api_key,
+            model,
             [{"role": "user", "content": "请只回复两个字：收到"}],
-            timeout=timeout, temperature=0.0)
+            timeout=timeout,
+            temperature=0.0,
+        )
     except LLMError as e:
         return False, str(e)
     dt = _time.monotonic() - t0
@@ -232,8 +241,12 @@ def polish_report(markdown: str, cfg: dict | None = None) -> str:
             skill_body = sk["body"]
     timeout = int(cfg.get("llm_timeout", 60))
     return chat_complete(
-        base_url, api_key, model,
-        [{"role": "system", "content": build_system_prompt(skill_body)},
-         {"role": "user", "content": markdown}],
+        base_url,
+        api_key,
+        model,
+        [
+            {"role": "system", "content": build_system_prompt(skill_body)},
+            {"role": "user", "content": markdown},
+        ],
         timeout=timeout,
     )

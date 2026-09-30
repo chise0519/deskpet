@@ -4,8 +4,14 @@ from deskpet import scheduler
 
 
 def R(id=1, due="2026-09-09T09:00:00", repeat="once", notified=0, enabled=1):
-    return {"id": id, "content": "x", "due_at": due, "repeat": repeat,
-            "notified": notified, "enabled": enabled}
+    return {
+        "id": id,
+        "content": "x",
+        "due_at": due,
+        "repeat": repeat,
+        "notified": notified,
+        "enabled": enabled,
+    }
 
 
 NOW = datetime(2026, 9, 9, 9, 30)  # 周三
@@ -13,13 +19,25 @@ NOW = datetime(2026, 9, 9, 9, 30)  # 周三
 
 def test_due_filters():
     rs = [
-        R(id=1, due="2026-09-09T09:00:00"),                # 到期 ✓
-        R(id=2, due="2026-09-09T10:00:00"),                # 未到
-        R(id=3, due="2026-09-09T09:00:00", notified=1),    # 本周期已弹过
-        R(id=4, due="2026-09-09T09:00:00", enabled=0),     # 停用
+        R(id=1, due="2026-09-09T09:00:00"),  # 到期 ✓
+        R(id=2, due="2026-09-09T10:00:00"),  # 未到
+        R(id=3, due="2026-09-09T09:00:00", notified=1),  # 本周期已弹过
+        R(id=4, due="2026-09-09T09:00:00", enabled=0),  # 停用
         {"id": 5, "due_at": "bad", "enabled": 1, "notified": 0, "repeat": "once"},
     ]
     assert [r["id"] for r in scheduler.due_reminders(rs, NOW)] == [1]
+
+
+def test_snoozed_until_controls_effective_due():
+    r = R(due="2026-09-10T09:00:00", repeat="daily")
+    r["snoozed_until"] = "2026-09-09T09:20:00"
+    assert scheduler.due_reminders([r], NOW) == [r]
+
+
+def test_snooze_does_not_shift_recurring_schedule():
+    r = R(due="2026-09-10T09:00:00", repeat="daily")
+    r["snoozed_until"] = "2026-09-09T09:20:00"
+    assert scheduler.next_after_trigger(r, NOW) == datetime(2026, 9, 10, 9, 0)
 
 
 def test_next_due_once_is_none():

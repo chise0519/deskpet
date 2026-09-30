@@ -1,15 +1,26 @@
 """提醒管理面板。"""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from PySide6.QtCore import QDate, QDateTime, QTime, Qt, Signal
+from PySide6.QtCore import QDate, QDateTime, Qt, QTime, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDateTimeEdit, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget,
+    QCheckBox,
+    QComboBox,
+    QDateTimeEdit,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from . import storage
+from . import display, storage
 from .quick_note import PANEL_CSS
 
 REPEAT_LABEL = {"once": "仅一次", "daily": "每天", "weekdays": "工作日"}
@@ -57,10 +68,14 @@ class ReminderRow(QWidget):
         try:
             due = datetime.fromisoformat(rem["due_at"])
             late = due < datetime.now() and not rem["enabled"]
-            due_s = due.strftime("%m-%d %H:%M") + ("（已过）" if late else "")
+            if rem.get("snoozed_until"):
+                snoozed = datetime.fromisoformat(rem["snoozed_until"])
+                due_s = f"延后至 {snoozed:%m-%d %H:%M}"
+            else:
+                due_s = f"下次 {due:%m-%d %H:%M}" + ("（已过）" if late else "")
         except ValueError:
             due_s = rem["due_at"]
-        sub = QLabel(f"{REPEAT_LABEL.get(rem['repeat'], rem['repeat'])} · 下次 {due_s}")
+        sub = QLabel(f"{REPEAT_LABEL.get(rem['repeat'], rem['repeat'])} · {due_s}")
         sub.setObjectName("remsub")
         top.addWidget(sub)
 
@@ -80,9 +95,7 @@ class ReminderPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("notePanel")
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-        )
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setStyleSheet(PANEL_CSS + EXTRA_CSS)
         self.setFixedWidth(330)
@@ -188,7 +201,10 @@ class ReminderPanel(QWidget):
         self.dt.setDateTime(QDateTime(d, QTime(9, 0)))
 
     def _toggle(self, rem_id: int, on: bool):
-        storage.update_reminder(rem_id, enabled=int(on))
+        if on:
+            storage.update_reminder(rem_id, enabled=1, notified=0)
+        else:
+            storage.update_reminder(rem_id, enabled=0, snoozed_until=None)
         self.reload()
 
     def _delete(self, rem_id: int):
@@ -198,11 +214,16 @@ class ReminderPanel(QWidget):
     def show_near(self, global_pos):
         self.reload()
         self.adjustSize()
-        geo = (self.screen() or self.windowHandle().screen()).availableGeometry()
+        screen = display.screen_at(global_pos)
+        geo = screen.availableGeometry()
         x = global_pos.x() - self.width() - 10
         if x < geo.left():
             x = global_pos.x() + 90
         y = max(geo.top(), min(global_pos.y() - 40, geo.bottom() - self.height()))
-        self.move(min(x, geo.right() - self.width()), y)
+        self.move(
+            display.clamp_top_left(
+                type(global_pos)(min(x, geo.right() - self.width() + 1), y), self.size(), screen
+            )
+        )
         self.show()
         self.content.setFocus()

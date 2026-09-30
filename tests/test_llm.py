@@ -1,4 +1,5 @@
 """llm 模块单测：用本地 mock server 验证 OpenAI 兼容调用链与错误处理。"""
+
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -65,8 +66,7 @@ def server():
 
 def test_chat_complete_ok(server):
     _Handler.mode = "ok"
-    out = llm.chat_complete(server, "sk-test", "m", [
-        {"role": "user", "content": "hi"}], timeout=5)
+    out = llm.chat_complete(server, "sk-test", "m", [{"role": "user", "content": "hi"}], timeout=5)
     assert out == "润色后的日报"
     assert _Handler.last_body["model"] == "m"
     assert _Handler.last_body["messages"][0]["role"] == "user"
@@ -75,36 +75,48 @@ def test_chat_complete_ok(server):
 def test_http_error(server):
     _Handler.mode = "http500"
     with pytest.raises(llm.LLMError, match="500"):
-        llm.chat_complete(server, "k", "m", [{"role": "user", "content": "x"}],
-                          timeout=5)
+        llm.chat_complete(server, "k", "m", [{"role": "user", "content": "x"}], timeout=5)
 
 
 def test_bad_json(server):
     _Handler.mode = "badjson"
     with pytest.raises(llm.LLMError, match="JSON"):
-        llm.chat_complete(server, "k", "m", [{"role": "user", "content": "x"}],
-                          timeout=5)
+        llm.chat_complete(server, "k", "m", [{"role": "user", "content": "x"}], timeout=5)
 
 
 def test_polish_missing_key():
     with pytest.raises(llm.LLMError, match="API Key"):
-        llm.polish_report("# 日报", {"llm_provider": "qwen",
-                                     "llm_base_url": "", "llm_model": "",
-                                     "llm_api_key": ""})
+        llm.polish_report(
+            "# 日报",
+            {"llm_provider": "qwen", "llm_base_url": "", "llm_model": "", "llm_api_key": ""},
+        )
 
 
 def test_polish_empty_content():
     with pytest.raises(llm.LLMError, match="为空"):
-        llm.polish_report("   ", {"llm_provider": "qwen",
-                                  "llm_base_url": "https://x.example/v1",
-                                  "llm_model": "m", "llm_api_key": "k"})
+        llm.polish_report(
+            "   ",
+            {
+                "llm_provider": "qwen",
+                "llm_base_url": "https://x.example/v1",
+                "llm_model": "m",
+                "llm_api_key": "k",
+            },
+        )
 
 
 def test_polish_ok_via_mock(server):
     _Handler.mode = "ok"
-    out = llm.polish_report("# 日报\n- [x] 修 bug", {
-        "llm_provider": "custom", "llm_base_url": server,
-        "llm_model": "mock", "llm_api_key": "sk-test", "llm_timeout": 5})
+    out = llm.polish_report(
+        "# 日报\n- [x] 修 bug",
+        {
+            "llm_provider": "custom",
+            "llm_base_url": server,
+            "llm_model": "mock",
+            "llm_api_key": "sk-test",
+            "llm_timeout": 5,
+        },
+    )
     assert out == "润色后的日报"
     # system prompt 必须带上
     roles = [m["role"] for m in _Handler.last_body["messages"]]
@@ -114,15 +126,22 @@ def test_polish_ok_via_mock(server):
 def test_local_endpoint_skips_key_check():
     """localhost 免 key：缺 key 不应报"未配置 API Key"，而是走到网络层报错。"""
     with pytest.raises(llm.LLMError) as ei:
-        llm.polish_report("# 日报", {
-            "llm_provider": "custom",
-            "llm_base_url": "http://127.0.0.1:1/v1",
-            "llm_model": "m", "llm_api_key": "", "llm_timeout": 2})
+        llm.polish_report(
+            "# 日报",
+            {
+                "llm_provider": "custom",
+                "llm_base_url": "http://127.0.0.1:1/v1",
+                "llm_model": "m",
+                "llm_api_key": "",
+                "llm_timeout": 2,
+            },
+        )
     assert "API Key" not in str(ei.value)
     assert "网络" in str(ei.value) or "超时" in str(ei.value)
 
 
 # ---------------- test_connection 自检 ----------------
+
 
 def test_conn_ok(server):
     _Handler.mode = "ok"
@@ -152,6 +171,7 @@ def test_conn_unreachable():
 
 
 # ---------------- list_models / discover / env_key_hint ----------------
+
 
 def test_list_models(server):
     _Handler.mode = "models"
@@ -193,17 +213,15 @@ def test_env_key_hint(monkeypatch):
 
 # ---------------- 按服务商档案：存取 / 切换不串 / 老配置迁移 ----------------
 
+
 def test_profile_roundtrip_per_provider():
     cfg = {}
-    config.set_llm_profile(cfg, "qwen", {"base_url": "u1", "model": "m1",
-                                         "api_key": "k1"})
-    config.set_llm_profile(cfg, "glm", {"base_url": "u2", "model": "m2",
-                                        "api_key": "k2"})
+    config.set_llm_profile(cfg, "qwen", {"base_url": "u1", "model": "m1", "api_key": "k1"})
+    config.set_llm_profile(cfg, "glm", {"base_url": "u2", "model": "m2", "api_key": "k2"})
     assert config.get_llm_profile(cfg, "qwen")["api_key"] == "k1"
     assert config.get_llm_profile(cfg, "glm")["api_key"] == "k2"
     # 未配过的服务商是空档案，不串
-    assert config.get_llm_profile(cfg, "custom") == {
-        "base_url": "", "model": "", "api_key": ""}
+    assert config.get_llm_profile(cfg, "custom") == {"base_url": "", "model": "", "api_key": ""}
 
 
 def test_profile_overwrite_same_provider():
@@ -214,10 +232,11 @@ def test_profile_overwrite_same_provider():
 
 
 def test_profile_migration_from_flat(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(config, "config_path", lambda: tmp_path / "config.json")
     (tmp_path / "config.json").write_text(
-        '{"llm_provider": "glm", "llm_base_url": "u", '
-        '"llm_model": "m", "llm_api_key": "k"}', encoding="utf-8")
+        '{"llm_provider": "glm", "llm_base_url": "u", "llm_model": "m", "llm_api_key": "k"}',
+        encoding="utf-8",
+    )
     cfg = config.load_config()
     assert cfg["llm_profiles"]["glm"]["api_key"] == "k"
     assert config.get_llm_profile(cfg, "glm")["api_key"] == "k"
@@ -227,10 +246,10 @@ def test_profile_migration_from_flat(tmp_path, monkeypatch):
 def test_polish_uses_profile_of_current_provider():
     """润色读的是当前服务商档案，不是别家的 Key。"""
     cfg = {"llm_provider": "glm"}
-    config.set_llm_profile(cfg, "qwen", {"base_url": "https://q/v1",
-                                         "model": "qm", "api_key": "qk"})
-    config.set_llm_profile(cfg, "glm", {"base_url": "", "model": "",
-                                        "api_key": ""})
+    config.set_llm_profile(
+        cfg, "qwen", {"base_url": "https://q/v1", "model": "qm", "api_key": "qk"}
+    )
+    config.set_llm_profile(cfg, "glm", {"base_url": "", "model": "", "api_key": ""})
     with pytest.raises(llm.LLMError, match="API Key"):
         llm.polish_report("# 日报", cfg)
     cfg["llm_provider"] = "qwen"

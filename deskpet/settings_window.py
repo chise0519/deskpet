@@ -1,12 +1,25 @@
 """设置窗口：日报目录 + 时钟/互动/提醒/系统各项偏好。"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -22,6 +35,14 @@ QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
 QLineEdit, QSpinBox {
     background: #1b1d25; color: #eceff4; border: 1px solid #3b3f4d;
     border-radius: 6px; padding: 5px 8px; font-size: 12px;
+}
+QComboBox {
+    background: #1b1d25; color: #eceff4; border: 1px solid #3b3f4d;
+    border-radius: 6px; padding: 5px 8px; font-size: 12px;
+}
+QComboBox::drop-down { border: none; width: 20px; }
+QComboBox QAbstractItemView {
+    background: #23262f; color: #eceff4; selection-background-color: #3a5a86;
 }
 QSpinBox::up-button, QSpinBox::down-button { width: 16px; }
 QCheckBox { color: #dfe3ea; spacing: 7px; font-size: 12px; }
@@ -94,11 +115,22 @@ class SettingsWindow(QWidget):
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setStyleSheet(PANEL_CSS + EXTRA_CSS)
         self.setWindowTitle("DeskPet 设置")
-        self.setFixedWidth(400)
+        self.resize(430, 720)
+        self.setMinimumWidth(420)
 
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        scroll.viewport().setStyleSheet("background:transparent;")
+        body = QWidget()
+        root = QVBoxLayout(body)
         root.setContentsMargins(14, 10, 14, 12)
         root.setSpacing(6)
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
 
         hdr = QHBoxLayout()
         t = QLabel("设置")
@@ -122,6 +154,7 @@ class SettingsWindow(QWidget):
         row = QHBoxLayout()
         self.dir_edit = QLineEdit()
         self.dir_edit.setPlaceholderText("留空 = 默认目录")
+        self.dir_edit.editingFinished.connect(self._apply_reports_dir)
         row.addWidget(self.dir_edit, 1)
         b_browse = QPushButton("浏览…")
         b_browse.setProperty("class", "mini")
@@ -174,8 +207,7 @@ class SettingsWindow(QWidget):
         self.spin_poll = QSpinBox()
         self.spin_poll.setRange(5, 300)
         self.spin_poll.setSuffix(" 秒")
-        self.spin_poll.valueChanged.connect(
-            lambda v: (self._set("poll_sec", v), self.changed.emit()))
+        self.spin_poll.valueChanged.connect(lambda v: self._set("poll_sec", v))
         row.addWidget(self.spin_poll)
         row.addStretch(1)
         v.addLayout(row)
@@ -268,16 +300,14 @@ class SettingsWindow(QWidget):
         hint.setStyleSheet("color:#6f7889;font-size:10px;")
         hint.setWordWrap(True)
         v.addWidget(hint)
-        self.llm_url.editingFinished.connect(
-            lambda: (self._save_form(), self._refresh_models()))
+        self.llm_url.editingFinished.connect(lambda: (self._save_form(), self._refresh_models()))
         self.llm_model.lineEdit().editingFinished.connect(self._save_form)
         self.llm_model.currentIndexChanged.connect(lambda _i: self._save_form())
-        self.llm_key.editingFinished.connect(
-            lambda: (self._save_form(), self._refresh_models()))
-        self.spin_timeout.valueChanged.connect(
-            lambda v: self._set("llm_timeout", v))
+        self.llm_key.editingFinished.connect(lambda: (self._save_form(), self._refresh_models()))
+        self.spin_timeout.valueChanged.connect(lambda v: self._set("llm_timeout", v))
         self.cmb_save.currentIndexChanged.connect(
-            lambda _i: self._set("polish_save", self.cmb_save.currentData()))
+            lambda _i: self._set("polish_save", self.cmb_save.currentData())
+        )
         root.addWidget(g)
 
         # ---- 系统 ----
@@ -285,7 +315,7 @@ class SettingsWindow(QWidget):
         v = QVBoxLayout(g)
         v.setSpacing(4)
         self.cb_auto = QCheckBox("开机自启")
-        self.cb_auto.toggled.connect(lambda on: autostart.set_enabled(on))
+        self.cb_auto.toggled.connect(self._toggle_autostart)
         v.addWidget(self.cb_auto)
         row = QHBoxLayout()
         b_reset = QPushButton("重置企鹅位置到屏幕右下角")
@@ -308,9 +338,7 @@ class SettingsWindow(QWidget):
         cfg = config.load_config()
         self._loading = True
         self.dir_edit.setText(cfg.get("reports_dir") or "")
-        self.dir_hint.setText(
-            f"当前生效：{config.reports_dir()}"
-        )
+        self.dir_hint.setText(f"当前生效：{config.reports_dir()}")
         self.cb_sec.setChecked(bool(cfg.get("show_seconds", True)))
         self.cb_date.setChecked(bool(cfg.get("show_date", True)))
         self.cb_12.setChecked(bool(cfg.get("hour12", False)))
@@ -349,11 +377,15 @@ class SettingsWindow(QWidget):
         """把表单当前值存入"表单正在显示的服务商"的档案并落盘。"""
         prov = getattr(self, "_form_provider", None) or self.cmb_prov.currentData()
         cfg = config.load_config()
-        config.set_llm_profile(cfg, prov, {
-            "base_url": self.llm_url.text().strip(),
-            "model": self.llm_model.currentText().strip(),
-            "api_key": self.llm_key.text(),
-        })
+        config.set_llm_profile(
+            cfg,
+            prov,
+            {
+                "base_url": self.llm_url.text().strip(),
+                "model": self.llm_model.currentText().strip(),
+                "api_key": self.llm_key.text(),
+            },
+        )
         config.save_config(cfg)
 
     def _load_profile_to_form(self, provider: str):
@@ -412,14 +444,16 @@ class SettingsWindow(QWidget):
             self.test_lbl.setStyleSheet("color:#e06c75;font-size:10px;")
             self.test_lbl.setText(
                 "未发现可用模型服务。本地可装 Ollama/llama-server；"
-                "云端请先填 API Key 再点自动发现，或直接手填 Base URL/模型。")
+                "云端请先填 API Key 再点自动发现，或直接手填 Base URL/模型。"
+            )
             return
         self._found = found
         self.test_lbl.setStyleSheet("color:#7ee0a3;font-size:10px;")
         self.test_lbl.setText(
-            "发现 " + "；".join(
-                f"{f['source']}（{len(f['models'])} 个模型）" for f in found)
-            + " —— 已填入第一个，可改。")
+            "发现 "
+            + "；".join(f"{f['source']}（{len(f['models'])} 个模型）" for f in found)
+            + " —— 已填入第一个，可改。"
+        )
         first = found[0]
         self.llm_url.setText(first["base_url"])
         if first["api_key"]:
@@ -455,6 +489,7 @@ class SettingsWindow(QWidget):
         cfg = config.load_config()
         cfg[key] = value
         config.save_config(cfg)
+        self.changed.emit()
 
     # ---------------- 目录 ----------------
 
@@ -465,6 +500,24 @@ class SettingsWindow(QWidget):
             return
         self.dir_edit.setText(d)
         self._set("reports_dir", d)
+        self.dir_hint.setText(f"当前生效：{config.reports_dir()}")
+
+    def _apply_reports_dir(self):
+        if getattr(self, "_loading", False):
+            return
+        value = self.dir_edit.text().strip()
+        if value:
+            path = Path(value).expanduser()
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                QMessageBox.warning(self, "目录不可用", f"无法使用该目录：{exc}")
+                return
+            value = str(path.resolve())
+            self.dir_edit.setText(value)
+        else:
+            value = None
+        self._set("reports_dir", value)
         self.dir_hint.setText(f"当前生效：{config.reports_dir()}")
 
     def _open_dir(self):
@@ -508,8 +561,8 @@ class SettingsWindow(QWidget):
 
     def _add_skill(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择技能文件（.md）", str(Path.home()),
-            "Markdown (*.md);;所有文件 (*)")
+            self, "选择技能文件（.md）", str(Path.home()), "Markdown (*.md);;所有文件 (*)"
+        )
         if not path:
             return
         try:
@@ -522,8 +575,7 @@ class SettingsWindow(QWidget):
         if i >= 0:
             self.cmb_skill.setCurrentIndex(i)
             self._on_skill(i)
-        QMessageBox.information(
-            self, "DeskPet", f"已添加技能「{s['name']}」并选中。")
+        QMessageBox.information(self, "DeskPet", f"已添加技能「{s['name']}」并选中。")
 
     def _del_skill(self):
         name = self.cmb_skill.currentData()
@@ -567,10 +619,21 @@ class SettingsWindow(QWidget):
         cfg = config.load_config()
         cfg["pos_x"] = None
         cfg["pos_y"] = None
+        cfg["screen_name"] = ""
+        cfg["pos_rel_x"] = None
+        cfg["pos_rel_y"] = None
         config.save_config(cfg)
-        QMessageBox.information(
-            self, "DeskPet", "已重置，下次显示企鹅时回到屏幕右下角。"
-        )
+        QMessageBox.information(self, "DeskPet", "已重置，下次显示企鹅时回到屏幕右下角。")
+
+    def _toggle_autostart(self, on: bool):
+        if getattr(self, "_loading", False):
+            return
+        if autostart.set_enabled(on):
+            return
+        self.cb_auto.blockSignals(True)
+        self.cb_auto.setChecked(not on)
+        self.cb_auto.blockSignals(False)
+        QMessageBox.warning(self, "开机自启", "无法更新开机自启设置，请检查目录权限。")
 
     def show_settings(self):
         self.load()

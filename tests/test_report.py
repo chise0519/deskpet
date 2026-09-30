@@ -5,10 +5,20 @@ from deskpet import report
 DAY = date(2026, 9, 9)  # 周三
 
 NOTES = [
-    {"id": 1, "content": "写周报", "created_at": "2026-09-09T09:10:00",
-     "done": 1, "done_at": "2026-09-09T10:20:00"},
-    {"id": 2, "content": "修登录 bug", "created_at": "2026-09-09T11:00:00",
-     "done": 0, "done_at": None},
+    {
+        "id": 1,
+        "content": "写周报",
+        "created_at": "2026-09-09T09:10:00",
+        "done": 1,
+        "done_at": "2026-09-09T10:20:00",
+    },
+    {
+        "id": 2,
+        "content": "修登录 bug",
+        "created_at": "2026-09-09T11:00:00",
+        "done": 0,
+        "done_at": None,
+    },
 ]
 REMS = [
     {"id": 1, "content": "站会", "last_notified_at": "2026-09-09T09:30:00"},

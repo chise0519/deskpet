@@ -1,18 +1,24 @@
 """日报窗口：预生成 Markdown → 可编辑 → 保存文件。"""
+
 from __future__ import annotations
 
 import os
 import subprocess
-from datetime import date, datetime
+from datetime import date
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTextEdit,
-    QVBoxLayout, QWidget,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
-from . import config, llm, report, storage
+from . import config, fonts, llm, report, storage
 
 CSS = """
 #reportWin { background: #1e2028; }
@@ -21,7 +27,7 @@ QLabel#sub { color: #8b93a3; font-size: 11px; }
 QTextEdit {
     background: #17181e; color: #dfe3ea;
     border: 1px solid #343a48; border-radius: 8px; padding: 8px;
-    font-family: 'Consolas', 'Microsoft YaHei UI';
+    font-family: monospace;
     font-size: 13px;
 }
 QPushButton {
@@ -64,6 +70,7 @@ class ReportWindow(QWidget):
         self.setWindowFlags(Qt.WindowStaysOnTopHint)
         self.setStyleSheet(CSS)
         from .icons import app_icon
+
         self.setWindowIcon(app_icon())
         self.resize(560, 520)
         self._day = date.today()
@@ -75,6 +82,7 @@ class ReportWindow(QWidget):
 
         hdr = QHBoxLayout()
         from .icons import app_icon
+
         doc_ic = QLabel()
         doc_ic.setPixmap(app_icon((16,)).pixmap(16, 16))
         hdr.addWidget(doc_ic)
@@ -92,9 +100,7 @@ class ReportWindow(QWidget):
         root.addWidget(self.sub)
 
         self.editor = QTextEdit()
-        f = QFont("Consolas")
-        f.setStyleHint(QFont.Monospace)
-        self.editor.setFont(f)
+        self.editor.setFont(fonts.fixed(11))
         root.addWidget(self.editor, 1)
 
         btns = QHBoxLayout()
@@ -111,6 +117,7 @@ class ReportWindow(QWidget):
         self.b_polish = QPushButton("一键润色")
         self.b_polish.setObjectName("polish")
         from .icons import icon as _ic
+
         self.b_polish.setIcon(_ic("spark", 14))
         self.b_polish.clicked.connect(self._polish)
         btns.addWidget(self.b_polish)
@@ -128,14 +135,10 @@ class ReportWindow(QWidget):
         md = report.build_report(self._day, notes, rems)
         self.editor.setPlainText(md)
         done = sum(1 for n in notes if n["done"])
-        self.sub.setText(
-            f"{day_s} · 速记 {len(notes)} 条（完成 {done}）· 提醒触发 {len(rems)} 次"
-        )
+        self.sub.setText(f"{day_s} · 速记 {len(notes)} 条（完成 {done}）· 提醒触发 {len(rems)} 次")
 
     def _save(self):
-        path = report.save_report(
-            self.editor.toPlainText(), self._day, config.reports_dir()
-        )
+        path = report.save_report(self.editor.toPlainText(), self._day, config.reports_dir())
         self._last_path = path
         self.path_lbl.setText(f"已保存：{path}")
 
@@ -162,13 +165,12 @@ class ReportWindow(QWidget):
         mode = config.load_config().get("polish_save", "new")
         try:
             if mode == "overwrite":
-                path = report.save_report(
-                    polished, self._day, config.reports_dir())
+                path = report.save_report(polished, self._day, config.reports_dir())
                 note = f"润色完成并已覆盖：{path.name}"
             else:
                 path = report.save_report(
-                    polished, self._day, config.reports_dir(),
-                    suffix=".polished")
+                    polished, self._day, config.reports_dir(), suffix=".polished"
+                )
                 note = f"润色完成，另存为：{path.name}（原文未动）"
         except OSError as e:
             self.path_lbl.setText(f"润色完成但保存失败：{e}")
