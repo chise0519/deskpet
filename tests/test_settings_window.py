@@ -9,16 +9,14 @@ def test_discovered_models_populate_visible_dropdown(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     window = SettingsWindow()
 
-    window._apply_discovered(
-        {
+    entry = {
             "source": "llama-server",
             "base_url": "http://127.0.0.1:8080/v1",
             "api_key": "",
             "models": ["model-a", "model-b"],
             "local": True,
-        },
-        1,
-    )
+        }
+    window._apply_discovered(entry, [entry])
 
     assert window.cmb_prov.currentData() == "custom"
     assert [window.llm_model.itemText(i) for i in range(window.llm_model.count())] == [
@@ -29,6 +27,42 @@ def test_discovered_models_populate_visible_dropdown(tmp_path, monkeypatch):
     assert window.llm_model.styleSheet() == window.cmb_prov.styleSheet()
     window.llm_model.setCurrentIndex(1)
     assert window.llm_model.currentText() == "model-b"
+    window.close()
+    app.processEvents()
+
+
+def test_discovery_uses_current_service_without_popup(tmp_path, monkeypatch):
+    monkeypatch.setenv("DESKPET_HOME", str(tmp_path))
+    app = QApplication.instance() or QApplication([])
+    window = SettingsWindow()
+    window.llm_url.setText("https://current.example/v1")
+
+    window._discover_done(
+        [
+            {
+                "source": "llama-server",
+                "base_url": "http://127.0.0.1:8080/v1",
+                "api_key": "",
+                "models": ["local-model"],
+                "local": True,
+            },
+            {
+                "source": "当前配置",
+                "base_url": "https://current.example/v1",
+                "api_key": "key",
+                "models": ["cloud-a", "cloud-b"],
+                "local": False,
+            },
+        ]
+    )
+
+    assert window.llm_url.text() == "https://current.example/v1"
+    assert [window.llm_model.itemText(i) for i in range(window.llm_model.count())] == [
+        "cloud-a",
+        "cloud-b",
+    ]
+    assert "llama-server（1 个模型）" in window.test_lbl.text()
+    assert "当前配置（2 个模型）" in window.test_lbl.text()
     window.close()
     app.processEvents()
 

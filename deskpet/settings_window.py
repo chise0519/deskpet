@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -491,28 +490,9 @@ class SettingsWindow(QWidget):
             ),
             0,
         )
-        labels = [
-            f"{entry['source']} · {entry['base_url']} · {len(entry['models'])} 个模型"
-            for entry in found
-        ]
-        chosen = preferred
-        if len(found) > 1:
-            label, accepted = QInputDialog.getItem(
-                self,
-                "选择模型服务",
-                "发现多个可用服务，请选择要使用的一个：",
-                labels,
-                preferred,
-                False,
-            )
-            if not accepted:
-                self.test_lbl.setStyleSheet("color:#8b93a3;font-size:10px;")
-                self.test_lbl.setText(f"发现 {len(found)} 个可用服务；已取消选择，配置未更改。")
-                return
-            chosen = labels.index(label)
-        self._apply_discovered(found[chosen], len(found))
+        self._apply_discovered(found[preferred], found)
 
-    def _apply_discovered(self, entry: dict, total: int):
+    def _apply_discovered(self, entry: dict, found: list[dict]):
         """应用用户选择的发现结果；本地服务放进“自定义”档案。"""
         if entry.get("local") and self.cmb_prov.currentData() != "custom":
             index = self.cmb_prov.findData("custom")
@@ -525,9 +505,11 @@ class SettingsWindow(QWidget):
         self._fill_models(entry["models"])
         self._save_form()
         self.test_lbl.setStyleSheet("color:#7ee0a3;font-size:10px;")
+        summary = "；".join(
+            f"{item['source']}（{len(item['models'])} 个模型）" for item in found
+        )
         self.test_lbl.setText(
-            f"共发现 {total} 个服务；已选择 {entry['source']}，"
-            f"加载 {len(entry['models'])} 个模型。"
+            f"发现 {summary}。已加载 {entry['source']}，可在“模型选择”下拉框切换。"
         )
 
     def _fill_models(self, models: list):
