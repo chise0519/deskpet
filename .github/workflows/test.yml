@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       QT_QPA_PLATFORM: offscreen
-      DESKPET_HOME: ${{ runner.temp }}/deskpet-test
+      DESKPET_HOME: /tmp/deskpet-test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
